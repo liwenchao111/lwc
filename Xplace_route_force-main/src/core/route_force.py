@@ -350,14 +350,15 @@ def run_gr_and_fft(args, logger, data, rawdb, gpdb, ps, mov_node_pos=None, grdb=
     cap_map2d: torch.Tensor = cap_map[aId:].sum(dim=0)
 
     cg_mapAll = dmd_map2d / cap_map2d  # ignore metal0
-    min_cg = 0.8  # set too high may cause force_x(y)_map error i.e. route_force direction error
+    min_cg = torch.tensor(0.8, dtype=torch.float).to(cg_mapAll.device)  # set too high may cause force_x(y)_map error i.e. route_force direction error
     route_input_mat = torch.where(cg_mapAll > min_cg, cg_mapAll, min_cg)#TODO modify:route_input_mat
     route_input_mat = torch.where(route_input_mat > 1.0, torch.pow(route_input_mat, 2), route_input_mat)
     
     cg_mapH = dmd_map[hId::2].sum(dim=0) / cap_map[hId::2].sum(dim=0)
     cg_mapV = dmd_map[vId::2].sum(dim=0) / cap_map[vId::2].sum(dim=0)
     cg_mapHV = torch.stack((cg_mapH, cg_mapV))
-    cg_mapHV = torch.where(cg_mapHV > 1, cg_mapHV - 1, 0)
+    min_cg_mapHV = torch.tensor(0.0, dtype=torch.float).to(cg_mapHV.device)
+    cg_mapHV = torch.where(cg_mapHV > 1, cg_mapHV - 1, min_cg_mapHV)
 
     cgOvfl = (dmd_map[aId:] / cap_map[aId:]).max(dim=0)[0].clamp(min=1.0) - 1
     map_raw = (dmd_map, wire_dmd_map, via_dmd_map, cap_map)
@@ -819,7 +820,8 @@ def route_inflation(
     )
     grdb, routeforce, cg_mapAll, _, cg_mapHV, _, _, route_gradmat, gr_metrics = output
     numOvflNets, gr_wirelength, gr_numVias, gr_numShorts, rc_hor_mean, rc_ver_mean = gr_metrics
-    cg_map_inflation = torch.where(cg_mapAll > 1, cg_mapAll - 1, 0)
+    min_cg_map_inflation = torch.tensor(0.0, dtype=torch.float).to(cg_mapAll.device)
+    cg_map_inflation = torch.where(cg_mapAll > 1, cg_mapAll - 1, min_cg_map_inflation)
     num_bin_x, num_bin_y = cg_map_inflation.shape[0], cg_map_inflation.shape[1]
     unit_len_x, unit_len_y = routeforce.gcell_steps()
     unit_len_x /= data.site_width
@@ -1188,18 +1190,20 @@ def handle_macro_margin_init_density(cg_mapAll, data, args, routeforce, margin=2
         
         for i in range(macro_pos.shape[0]):
             #  only set init_density to args.target_density when cg_mapAll > 1.0
+            min_allow_cg = torch.tensor(0.9, dtype=torch.float).to(cg_mapAll.device)
+            marco_around_density = torch.tensor(args.target_density, dtype=torch.float).to(cg_mapAll.device)
             data.init_density_map[x_start_margin[i]:x_start[i], y_start_margin[i]:y_end_margin[i]] = torch.where(
-                cg_mapAll[x_start_margin[i]:x_start[i], y_start_margin[i]:y_end_margin[i]] > 0.9, args.target_density, 
+                cg_mapAll[x_start_margin[i]:x_start[i], y_start_margin[i]:y_end_margin[i]] > min_allow_cg, marco_around_density, 
                 data.init_density_map[x_start_margin[i]:x_start[i], y_start_margin[i]:y_end_margin[i]])
             
             data.init_density_map[x_end[i]:x_end_margin[i], y_start_margin[i]:y_end_margin[i]] = torch.where(
-                cg_mapAll[x_end[i]:x_end_margin[i], y_start_margin[i]:y_end_margin[i]] > 0.9, args.target_density, 
+                cg_mapAll[x_end[i]:x_end_margin[i], y_start_margin[i]:y_end_margin[i]] > min_allow_cg, marco_around_density, 
                 data.init_density_map[x_end[i]:x_end_margin[i], y_start_margin[i]:y_end_margin[i]])
             
             data.init_density_map[x_start[i]:x_end[i], y_start_margin[i]:y_start[i]] = torch.where(
-                cg_mapAll[x_start[i]:x_end[i], y_start_margin[i]:y_start[i]] > 0.9, args.target_density, 
+                cg_mapAll[x_start[i]:x_end[i], y_start_margin[i]:y_start[i]] > min_allow_cg, marco_around_density, 
                 data.init_density_map[x_start[i]:x_end[i], y_start_margin[i]:y_start[i]])
             
             data.init_density_map[x_start[i]:x_end[i], y_end[i]:y_end_margin[i]] = torch.where(
-                cg_mapAll[x_start[i]:x_end[i], y_end[i]:y_end_margin[i]] > 0.9, args.target_density, 
+                cg_mapAll[x_start[i]:x_end[i], y_end[i]:y_end_margin[i]] > min_allow_cg, marco_around_density, 
                 data.init_density_map[x_start[i]:x_end[i], y_end[i]:y_end_margin[i]])

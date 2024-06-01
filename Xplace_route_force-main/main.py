@@ -6,7 +6,7 @@ def get_option():
     # general setting
     parser.add_argument('--dataset_root', type=str, default='data/raw', help='the parent folder of dataset')
     parser.add_argument('--dataset', type=str, default='ispd2015_fix', help='dataset name')
-    parser.add_argument('--design_name', type=str, default='mgc_superblue12', help='design name')
+    parser.add_argument('--design_name', type=str, default='mgc_fft_a', help='design name')
     parser.add_argument('--custom_path', type=str, default='', help='custom design path, set it as token1:path1,token2:path2 e.g. lef:data/test.lef,def:data/test.def,design_name:mydesign,benchmark:mybenchmark')
     parser.add_argument('--load_from_raw', type=str2bool, default=True, help='If True, parse and load from benchmark files. If False, load from pt')
     parser.add_argument('--run_all', type=str2bool, default=False, help='If True, run all designs in the given dataset. If False, run the given design_name only.')
@@ -38,7 +38,7 @@ def get_option():
     parser.add_argument("--loss_type", type=str, default="direct", help="loss type")
 
     # global routing params
-    parser.add_argument('--use_cell_inflate', type=str2bool, default=False, help='use cell inflation')
+    parser.add_argument('--use_cell_inflate', type=str2bool, default=True, help='use cell inflation')
     parser.add_argument('--min_area_inc', type=float, default=-2, help='threshold of terminating inflation')
     parser.add_argument('--use_route_force', type=str2bool, default=False, help='use routing force')
     parser.add_argument('--route_freq', type=int, default=10, help='routing freq')
