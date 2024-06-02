@@ -2,6 +2,7 @@ from utils import *
 from src import *
 from functools import partial
 
+
 def get_trunc_node_pos_fn(mov_node_size, data):
     node_pos_lb = mov_node_size / 2 + data.die_ll + 1e-4 
     node_pos_ub = data.die_ur - mov_node_size / 2 + data.die_ll - 1e-4
@@ -291,7 +292,8 @@ def run_placement_main_nesterov(args, logger):
             log_str = generate_log_string(ps, iteration, hpwl, overflow, obj)
             logger.info(log_str)
 
-            if args.draw_placement and ps.open_route_force_opt and iteration % 1 == 0:
+            #if args.draw_placement and ps.open_route_force_opt and iteration % 1 == 0:
+            if args.draw_placement and iteration % 5 == 0 and ps.open_route_force_opt:
                 info = (iteration, hpwl, data.design_name)
 
                 mov_node_pos_to_draw = mov_node_pos[mov_lhs:mov_rhs, ...].clone()
@@ -310,6 +312,7 @@ def run_placement_main_nesterov(args, logger):
                     node_size_to_draw = torch.cat([node_size_to_draw, filler_node_size_to_draw], dim=0)
 
                 # draw_fig_with_cairo_cpp(node_pos_to_draw, node_size_to_draw, data, info, args)
+                
                 draw_fig_with_cairo(
                     mov_node_pos=mov_node_pos_to_draw,
                     mov_node_size=mov_node_size_to_draw,

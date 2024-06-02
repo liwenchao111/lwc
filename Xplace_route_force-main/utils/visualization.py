@@ -78,7 +78,8 @@ def draw_grid(ctx, lx, hx, ly, hy, num_bin_x, num_bin_y):
     lineWidth = 0.05 * min((hx - lx) / num_bin_x, (hy - ly) / num_bin_y)
     ctx.set_line_width(lineWidth)
     ctx.set_source_rgb(0.3, 0.3, 0.3)
-
+    num_bin_x = int(num_bin_x)
+    num_bin_y = int(num_bin_y)
     for i in range(1, num_bin_x):
         ctx.move_to(i * (hx - lx) / num_bin_x + lx, ly)
         ctx.line_to(i * (hx - lx) / num_bin_x + lx, hy)
@@ -164,7 +165,7 @@ def draw_fig_with_cairo(
     ctx.set_source_rgb(1.0, 1.0, 1.0)
     ctx.fill()
     # Bins / Grids
-    # draw_grid(ctx, lx, hx, ly, hy, data.num_bin_x, data.num_bin_y)
+    draw_grid(ctx, lx, hx, ly, hy, data.num_bin_x/8, data.num_bin_y/8)
     
     # Nodes
     draw_nodes(ctx, mov_node_pos, mov_node_size, (0.0, 0.0, 0.5, 0.8), lx, ly)

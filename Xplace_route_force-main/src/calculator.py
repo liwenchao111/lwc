@@ -50,16 +50,17 @@ def calc_obj_and_grad(
             mov_route_grad, mov_congest_grad, mov_pseudo_grad = route_fn(
                 mov_node_pos, mov_node_size, expand_ratio, constraint_fn
             )
-            mov_node_pos.grad[mov_lhs:mov_rhs] += ps.route_weight * mov_route_grad[mov_lhs:mov_rhs]
-            mov_route_force = ps.route_weight * mov_route_grad[mov_lhs:mov_rhs].detach().norm(p=1)
+            #mov_node_pos.grad[mov_lhs:mov_rhs] += ps.route_weight * mov_route_grad[mov_lhs:mov_rhs]
+            #mov_route_force = ps.route_weight * mov_route_grad[mov_lhs:mov_rhs].detach().norm(p=1)
             mov_node_pos.grad += ps.congest_weight * mov_congest_grad
             mov_congest_force = ps.congest_weight * mov_congest_grad.detach().norm(p=1)
-            if mov_pseudo_grad is not None:
-                mov_node_pos.grad += ps.pseudo_weight * mov_pseudo_grad
-                mov_pseudo_force = ps.pseudo_weight * mov_pseudo_grad.detach().norm(p=1)
-                ps.grad_recorder["mov_pseudo_grad"] = mov_pseudo_grad.clone()
+            #if mov_pseudo_grad is not None:
+            #    mov_node_pos.grad += ps.pseudo_weight * mov_pseudo_grad
+            #    mov_pseudo_force = ps.pseudo_weight * mov_pseudo_grad.detach().norm(p=1)
+            #    ps.grad_recorder["mov_pseudo_grad"] = mov_pseudo_grad.clone()
                 
-            all_route_force = mov_route_force + mov_congest_force + mov_pseudo_force
+            #all_route_force = mov_route_force + mov_congest_force + mov_pseudo_force
+            all_route_force = mov_congest_force 
             ps.grad_recorder["all_route_grad"] = mov_node_pos.grad.clone()
             ps.grad_recorder["mov_route_grad"] = mov_route_grad.clone()
             ps.grad_recorder["mov_congest_grad"] = mov_congest_grad.clone()

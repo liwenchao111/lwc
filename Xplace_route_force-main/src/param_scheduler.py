@@ -371,11 +371,12 @@ class ParamScheduler:
         alpha_1 = data.mov_node_to_num_pins
         alpha_2 = self.precond_coef * self.density_weight * data.mov_node_area
         if self.use_route_force and self.open_route_force_opt:
-            alpha_route = self.route_weight * data.mov_node_to_num_pins
+            #alpha_route = self.route_weight * data.mov_node_to_num_pins
             alpha_congest = self.congest_weight * data.mov_node_area
-            alpha_pseudo = self.pseudo_weight * self.mov_node_to_num_pseudo_pins
+            #alpha_pseudo = self.pseudo_weight * self.mov_node_to_num_pseudo_pins
             self.precond_weight = (
-                alpha_1 + alpha_2 + alpha_route + alpha_congest + alpha_pseudo
+                alpha_1 + alpha_2  + alpha_congest
+                #alpha_1 + alpha_2 + alpha_route + alpha_congest + alpha_pseudo
             ).clamp_(min=1.0)
         else:
             self.precond_weight = (
