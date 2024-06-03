@@ -42,9 +42,9 @@ def get_option():
     parser.add_argument('--min_area_inc', type=float, default=-2, help='threshold of terminating inflation')
     parser.add_argument('--use_route_force', type=str2bool, default=True, help='use routing force')
     parser.add_argument('--route_freq', type=int, default=10, help='routing freq')
-    parser.add_argument('--num_route_iter', type=int, default=400, help='number of routing iters')
+    parser.add_argument('--num_route_iter', type=int, default=10, help='number of routing iters')
     parser.add_argument('--route_weight', type=float, default=0, help='the weight of route')
-    parser.add_argument('--congest_weight', type=float, default=0, help='the weight of congested force')
+    parser.add_argument('--congest_weight', type=float, default=1.5, help='the weight of congested force')
     parser.add_argument('--pseudo_weight', type=float, default=0, help='the weight of pseudo net')
 
     # detailed placement and evaluation
@@ -55,7 +55,7 @@ def get_option():
     parser.add_argument('--final_route_eval', type=str2bool, default=False, help='eval placement solution by GR')
 
     # logging and saver
-    parser.add_argument('--log_freq', type=int, default=100)
+    parser.add_argument('--log_freq', type=int, default=10)
     parser.add_argument('--verbose_cpp_log', type=str2bool, default=False, help='verbose cpp log for debugging')
     parser.add_argument('--cpp_log_level', type=int, default=2, help='0: DEBUG, 1: VERBOSE, 2:INFO')
     parser.add_argument('--result_dir', type=str, default='result', help='log/model root directory') 

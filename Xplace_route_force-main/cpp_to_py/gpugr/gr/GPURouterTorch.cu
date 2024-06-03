@@ -181,7 +181,7 @@ __global__ void fillerRouteForce(
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < num_fillers) {
         float weight = filler_weight[i];
-        if (weight > 0) {
+        if (1 > 0) {
             const float x_l = (filler_pos[i][0] - filler_size[i][0] / 2) / unit_len_x;
             const float x_h = (filler_pos[i][0] + filler_size[i][0] / 2) / unit_len_x;
             const float y_l = (filler_pos[i][1] - filler_size[i][1] / 2) / unit_len_y;

@@ -10,6 +10,7 @@ import seaborn as sns
 import os
 import copy
 import torchvision.transforms
+from utils import *
 
 
 class RouteCache:
@@ -258,8 +259,8 @@ def get_route_force(
         mov_route_grad = route_cache.mov_route_grad
     
     # 2.2.1) compute congestion region force : push cells away from congested area
-    mov_congest_grad[:filler_lhs] += cell_congestion_force(
-        data, mov_node_pos, mov_node_size, expand_ratio,
+    mov_congest_grad += cell_congestion_force(
+        args, data, mov_node_pos, mov_node_size, expand_ratio,
         cg_mapAll, route_gradmat, routeforce, 0, filler_lhs, -1.0
     )    
 
@@ -282,7 +283,29 @@ def get_route_force(
     else:
         mov_pseudo_grad = None
         # logger.warning("No filler, cannot use filler route force")
-
+    '''''
+    cg_map_medium = torch.zeros(64,64,dtype=torch.float32)
+    for i in range(0,64):
+        for j in range(0,64):
+            cg_map_medium[i][j] =cg_mapAll[i*8:(i+1)*8, j*8:(j+1)*8].sum() / (8 * 8)
+            
+    ps.cg_map_iter += 1
+    if ps.cg_map_iter % 5 == 0 :
+        mov_lhs, mov_rhs = data.movable_index
+        fix_node_pos_to_draw = data.node_pos[mov_rhs:, ...].clone()
+        fix_node_size_to_draw = data.node_size[mov_rhs:, ...].clone()
+    
+        draw_cg_fig_with_cairo(
+            cg_map=cg_mapAll,
+            args=args,
+            fix_node_pos=fix_node_pos_to_draw,
+            fix_node_size=fix_node_size_to_draw,
+            data=data,
+            name=data.design_name,
+            iter=ps.cg_map_iter,
+            route_grad=mov_congest_grad
+        )
+'''
     return mov_route_grad, mov_congest_grad, mov_pseudo_grad
 
 
@@ -302,6 +325,7 @@ def run_gr_and_fft_main(
 
         output = run_gr_and_fft(args, logger, data, rawdb, gpdb, ps, mov_node_pos[mov_lhs:mov_rhs], **kwargs)
         route_cache.gr_and_fft_main_output= output
+
     else:
         output = route_cache.gr_and_fft_main_output    
         
@@ -489,7 +513,7 @@ def conn_route_force(
     return conn_route_grad
 
 def cell_congestion_force(
-    data, mov_node_pos, mov_node_size, expand_ratio, cg_mapAll, route_gradmat, routeforce, lhs, rhs, grad_weight=1.0
+    args, data, mov_node_pos, mov_node_size, expand_ratio, cg_mapAll, route_gradmat, routeforce, lhs, rhs, grad_weight=1.0
 ):
     # NOTE: grad_weight == 1.0, push cell to congested area
     num_bin_x, num_bin_y = route_gradmat.shape[1], route_gradmat.shape[2]
@@ -498,126 +522,46 @@ def cell_congestion_force(
     unit_len_y /= data.site_width
 
     # value > 1.0 means congested
-    node_cg_value = calc_node_congestion_value(cg_mapAll, mov_node_pos[lhs:rhs], num_bin_x, num_bin_y, unit_len_x, unit_len_y)
+    node_cg_value = calc_node_congestion_value(cg_mapAll, mov_node_pos, num_bin_x, num_bin_y, unit_len_x, unit_len_y)
     if grad_weight > 0: # for filler
         filler_weight = torch.where((node_cg_value > 0.5) & (node_cg_value < 1.0), 1.0, 0)
     else: # for movable cells
         high_indices, medium_indices, low_indices = classify_cell_according_pins(data.mov_node_to_num_pins, lhs, rhs)
-        min_cg_one = torch.tensor(0.8, dtype=torch.float).to(cg_mapAll.device)
+        min_cg_one = torch.tensor(0.7, dtype=torch.float).to(cg_mapAll.device)        
         node_cg_value = node_cg_value.float()
         filler_weight = torch.where(node_cg_value > min_cg_one, node_cg_value, torch.tensor(0.0, dtype=torch.float).to(cg_mapAll.device))
-        filler_weight[medium_indices] = 0.0
+        filler_weight[medium_indices] = 0.8
         filler_weight[low_indices] = 0.0
         filler_weight.clamp_(max=2.0)
-        
+        import numpy as np
+
+        rhs_values = filler_weight[rhs:]
+        if (rhs_values > 0.5).any() and (rhs_values < 8.0).any():
+            filler_weight[rhs:] *= -1.5
+        else:
+            filler_weight[rhs:] = 0.0
+
+    
+    num = mov_node_pos.size(0)
     # filler_weight = torch.ones(rhs - lhs, device=mov_node_pos.device)    
     filler_route_grad = routeforce.filler_route_grad(
-        mov_node_pos[lhs:rhs],
-        mov_node_size[lhs:rhs],
+        mov_node_pos,
+        mov_node_size,
         filler_weight,
-        expand_ratio[lhs:rhs],
+        expand_ratio,
         route_gradmat,
         grad_weight,
         unit_len_x,
         unit_len_y,
         num_bin_x,
         num_bin_y,
-        rhs - lhs
+        num
     )
-
-    #calculate congestion map 64*64
-    cg_map_small = torch.zeros(8, 8, dtype=torch.float32)        
-    for i in range(0,8):
-        for j in range(0,8):
-            cg_map_small[i][j] = cg_mapAll[i*64:(i+1)*64, j*64:(j+1)*64].sum() / (64 * 64)
     
-    cg_map_small = torch.where(cg_map_small>0.8, cg_map_small, torch.tensor(0.0, dtype=torch.float))
+    filler_route_grad =torch.where(filler_route_grad.abs() > 1e-3, filler_route_grad, torch.tensor(0.0, dtype=torch.float).to(filler_route_grad.device))
     
-    # calculate congestion map 8*8
-    cg_map_medium = torch.zeros(64,64,dtype=torch.float32)
-    for i in range(0,64):
-        for j in range(0,64):
-            cg_map_medium[i][j] =cg_mapAll[i*8:(i+1)*8, j*8:(j+1)*8].sum() / (8 * 8)
+    return filler_route_grad
     
-    cg_map_medium = torch.where(cg_map_medium>0.8, cg_map_medium, torch.tensor(0.0, dtype=torch.float))
-    
-    # for box force map
-    box_force_map_smallH, box_force_map_smallV = clac_box_force_map_small(cg_map_small,64)
-    box_force_map_mediumH, box_force_map_mediumV = clac_box_force_map_small(cg_map_medium,8) 
-    
-    # for box force 
-    node_cg_force_small = calc_node_congestion_force_small(box_force_map_smallH, box_force_map_smallV, mov_node_pos[lhs:rhs], num_bin_x, num_bin_y, unit_len_x, unit_len_y)
-    node_cg_force_medium = calc_node_congestion_force_small(box_force_map_mediumH, box_force_map_mediumV, mov_node_pos[lhs:rhs], num_bin_x, num_bin_y, unit_len_x, unit_len_y)
-    
-    #set up box force map
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    box_force_grad = torch.zeros_like(filler_route_grad)
-    box_force_weight = 1.0
-    node_cg_force = node_cg_force_medium
-    box_force_grad = box_force_weight*node_cg_force.to(device)
-    
-    return box_force_grad 
-    
-def clac_box_force_map_small(cg_map_small,size):
-    # 计算上下左右四个方向上的力
-    # 上方向力
-    up_dealt = cg_map_small[1:, :] - cg_map_small[:-1, :]  
-    zero_up = torch.zeros(1,cg_map_small.size(1))
-    up_dealt = torch.cat((zero_up,up_dealt), 0)
-    expanded_up_dealt = torch.repeat_interleave(up_dealt, repeats=2, dim=1)
-    # 下方向力
-    down_dealt = cg_map_small[:-1, :] - cg_map_small[1:, :]
-    zero_down = torch.zeros(1,cg_map_small.size(1))
-    down_dealt = torch.cat((down_dealt,zero_down), 0)
-    expanded_down_dealt = torch.repeat_interleave(down_dealt, repeats=2, dim=1)
-    # 左方向力
-    left_dealt = cg_map_small[:, :-1] - cg_map_small[:, 1:]
-    zero_left = torch.zeros(cg_map_small.size(0),1)
-    left_dealt = torch.cat((zero_left,left_dealt), 1)
-    expanded_left_dealt = torch.repeat_interleave(left_dealt, repeats=2, dim=0)
-    # 右方向力
-    right_dealt = cg_map_small[:, :-1] -  cg_map_small[:, 1:] 
-    zero_right = torch.zeros(cg_map_small.size(0),1)
-    right_dealt = torch.cat((right_dealt,zero_left), 1)
-    expanded_right_dealt = torch.repeat_interleave(right_dealt, repeats=2, dim=0)
-    
-    size_len = (512 / size) * 2
-    size_len = int(size_len) 
-    
-    #缝合上下
-    stacked = torch.stack((expanded_up_dealt, expanded_down_dealt), dim=1)  # 形状为 [8, 2, 16]
-    transposed = torch.transpose(stacked, 0, 1)  # 形状为 [2, 8, 16]
-    new_y_dealt = torch.reshape(transposed, (size_len, size_len))  # 形状为 [16, 16]
-    #缝合左右
-    stacked = torch.stack((expanded_left_dealt, expanded_right_dealt), dim=0)  
-    transposed = torch.transpose(stacked, 0, 1)  
-    new_x_dealt = torch.reshape(transposed, (size_len, size_len))  
-    
-    return new_x_dealt, new_y_dealt
-
-def calc_node_congestion_force_small(box_force_map_smallV, box_force_map_smallH, node_pos, num_bin_x, num_bin_y, unit_len_x, unit_len_y):
-    # Convert all node positions to integer coordinates
-    unit_len_y = unit_len_y * 32
-    unit_len_x = unit_len_x * 32    
-    node_pos_x = (node_pos[:, 0] / unit_len_x).long()
-    node_pos_y = (node_pos[:, 1] / unit_len_y).long()
-    num_bin_x = num_bin_x / 32
-    num_bin_y = num_bin_y / 32
-    
-    # Clamp all coordinates within valid range
-    node_pos_x = torch.clamp(node_pos_x, 0, num_bin_x - 1)
-    node_pos_y = torch.clamp(node_pos_y, 0, num_bin_y - 1)
-    
-    # Retrieve congestion values for all nodes at once
-    device = box_force_map_smallH.device
-    node_pos_x = node_pos_x.to(device).long()
-    node_pos_y = node_pos_y.to(device).long()
-    node_cg_value_force_x = box_force_map_smallH[node_pos_x, node_pos_y]
-    node_cg_value_force_y = box_force_map_smallV[node_pos_x, node_pos_y] 
-    node_cg_value_force = torch.stack((node_cg_value_force_x, node_cg_value_force_y), dim=1)
-    
-    return node_cg_value_force
-
 def filler_pseudo_wire_force(data, ps, mov_node_pos, mov_node_size, routeforce, cg_mapAll, lhs, rhs):
     blurrer = torchvision.transforms.GaussianBlur(kernel_size=7, sigma=2)
     cg_mapAll_blurred: torch.Tensor = blurrer(cg_mapAll.unsqueeze(0)).squeeze(0)
@@ -1230,16 +1174,17 @@ def set_macro_region_congestion_one(cg_mapAll, data, routeforce):
     bin_max_x = (node_region_max[:, 0] / unit_len_x).int().clamp(0, num_bin_x - 1)
     bin_min_y = (node_region_min[:, 1] / unit_len_y).int().clamp(0, num_bin_y - 1)
     bin_max_y = (node_region_max[:, 1] / unit_len_y).int().clamp(0, num_bin_y - 1)
-
+    
+    
     for i in range(0, rhs-lhs):
-        cg_mapAll[bin_min_x[i]:bin_max_x[i], bin_min_y[i]:bin_max_y[i]] = 1.0
+        cg_mapAll[bin_min_x[i]:bin_max_x[i], bin_min_y[i]:bin_max_y[i]] = 1
     
 
 def classify_cell_according_pins(mov_node_to_num_pins, lhs, rhs, std_top_multiplier=0.5, std_low_multiplier=0.5):
     # Check if the result is already in the cache
-    key = (lhs, rhs, std_top_multiplier, std_low_multiplier)
-    if key in route_cache.classfied_cell_indices:
-        return route_cache.classfied_cell_indices[key]
+    #key = (lhs, rhs, std_top_multiplier, std_low_multiplier)
+    #if key in route_cache.classfied_cell_indices:
+    #    return route_cache.classfied_cell_indices[key]
 
     # If the result is not in the cache, calculate it and save it to the cache
     cell_to_num_pins = mov_node_to_num_pins[lhs:rhs]
@@ -1254,7 +1199,7 @@ def classify_cell_according_pins(mov_node_to_num_pins, lhs, rhs, std_top_multipl
     low_indices = torch.nonzero(cell_to_num_pins <= num_pins_low, as_tuple=True)[0] + lhs
 
     result = high_indices, medium_indices, low_indices
-    route_cache.classfied_cell_indices[key] = result
+    #route_cache.classfied_cell_indices[key] = result
 
     return result
 

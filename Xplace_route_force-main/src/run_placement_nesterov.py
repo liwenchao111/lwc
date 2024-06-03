@@ -147,7 +147,7 @@ def run_placement_main_nesterov(args, logger):
     route_early_terminate_signal = False
     for iteration in range(args.inner_iter):
         # optimizer.zero_grad() # zero grad inside obj_and_grad_fn
-     
+    
         obj = optimizer.step(obj_and_grad_fn)
         hpwl, overflow = evaluator_fn(mov_node_pos)
         # update parameters
@@ -301,8 +301,10 @@ def run_placement_main_nesterov(args, logger):
                 fix_node_pos_to_draw = data.node_pos[mov_rhs:, ...].clone()
                 fix_node_size_to_draw = data.node_size[mov_rhs:, ...].clone()
 
-                node_pos_to_draw = torch.cat([mov_node_pos_to_draw, fix_node_pos_to_draw], dim=0)
-                node_size_to_draw = torch.cat([mov_node_size_to_draw, fix_node_size_to_draw], dim=0)
+                #node_pos_to_draw = torch.cat([mov_node_pos_to_draw, fix_node_pos_to_draw], dim=0)
+                #node_size_to_draw = torch.cat([mov_node_size_to_draw, fix_node_size_to_draw], dim=0)
+                node_pos_to_draw = mov_node_pos_to_draw
+                node_size_to_draw = mov_node_size_to_draw
 
                 filler_node_pos_to_draw, filler_node_size_to_draw = None, None
                 if args.use_filler:
@@ -310,12 +312,15 @@ def run_placement_main_nesterov(args, logger):
                     filler_node_size_to_draw = data.filler_size[:(mov_node_pos.shape[0] - mov_rhs), ...]
                     node_pos_to_draw = torch.cat([node_pos_to_draw, filler_node_pos_to_draw], dim=0)
                     node_size_to_draw = torch.cat([node_size_to_draw, filler_node_size_to_draw], dim=0)
+                    
 
                 # draw_fig_with_cairo_cpp(node_pos_to_draw, node_size_to_draw, data, info, args)
                 
                 draw_fig_with_cairo(
                     mov_node_pos=mov_node_pos_to_draw,
                     mov_node_size=mov_node_size_to_draw,
+                    node_pos = node_pos_to_draw,
+                    node_size = node_size_to_draw,
                     fix_node_pos=fix_node_pos_to_draw,
                     fix_node_size=fix_node_size_to_draw,
                     filler_node_pos=filler_node_pos_to_draw,
@@ -388,8 +393,8 @@ def run_placement_main_nesterov(args, logger):
     )
     iteration += 1
     ps.iter += 1
-    if args.generate_gif:
-        generate_gif(args, data.design_name)
+    #if args.generate_gif:
+    #    generate_gif(args, data.design_name)
         
     route_metrics = None
     if args.final_route_eval:

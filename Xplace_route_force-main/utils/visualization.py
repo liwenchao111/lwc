@@ -110,6 +110,10 @@ def draw_arrow(ctx, x1, y1, x2, y2, color, arrow_size=10):
     ctx.fill()
 
 def draw_route_force_arrows(ctx, mov_node_pos, route_grad, scale_factor, topk, color, lx, ly):
+    non_zero_elements = torch.nonzero(route_grad, as_tuple=False).size(0)
+    if non_zero_elements < 400:
+        return
+    
     if topk > route_grad.shape[0]:
         topk = route_grad.shape[0]
     
@@ -126,12 +130,14 @@ def draw_route_force_arrows(ctx, mov_node_pos, route_grad, scale_factor, topk, c
         begin_y = round(mov_node_pos[i][1].item() + ly)
         end_x = begin_x - normalized_grad[i][0].item()
         end_y = begin_y - normalized_grad[i][1].item()
-
+        
         draw_arrow(ctx, begin_x, begin_y, end_x, end_y, color, 0.2 * scale_factor)
 
 def draw_fig_with_cairo(
     mov_node_pos,
     mov_node_size,
+    node_pos,
+    node_size,
     fix_node_pos,
     fix_node_size,
     filler_node_pos,
@@ -173,13 +179,85 @@ def draw_fig_with_cairo(
     draw_nodes(ctx, filler_node_pos, filler_node_size, (0.5, 0.5, 0.5, 0.8), lx, ly)
 
     # Grad Arrows (the biggest k arrows in terms of L1 norm)
+    num_mov_nodes = mov_node_pos.shape[0]
+    mov_grad = route_grad[:num_mov_nodes, :]
+    filler_grad = route_grad[num_mov_nodes:, :]
     if route_grad is not None and torch.any(route_grad != 0):
         scale_factor = 0.035 * min(hx - lx, hy - ly)
         color = (0.0, 0.0, 0.0, 0.7)
-        if filler_node_pos is not None:
-            mov_node_pos = torch.cat([mov_node_pos, filler_node_pos], dim=0)
-        draw_route_force_arrows(ctx, mov_node_pos, route_grad, scale_factor, 400, color, lx, ly)
+        draw_route_force_arrows(ctx, mov_node_pos, mov_grad, scale_factor, 400, color, lx, ly)
+        
+    if route_grad is not None and torch.any(route_grad != 0):
+        scale_factor = 0.035 * min(hx - lx, hy - ly)
+        color = (0.0, 0.6, 0.0, 0.7)
+        draw_route_force_arrows(ctx, filler_node_pos, filler_grad, scale_factor, 400, color, lx, ly)
+    
+    surface.write_to_png(png_path)
+    surface.finish()
 
+
+def draw_cg_fig_with_cairo(
+    cg_map,
+    args,
+    fix_node_pos,
+    fix_node_size,
+    data,
+    iter,
+    name,
+    route_grad=None,
+    base_size=2048,
+):
+    import cairocffi as cairo
+    import os
+    
+    filename = "%s_iter%d.png" % (name, iter)
+    res_root = os.path.join(args.result_dir, args.exp_id)
+    png_path = os.path.join(res_root, args.eval_dir, filename)
+    if not os.path.exists(os.path.dirname(png_path)):
+        os.makedirs(os.path.dirname(png_path))
+    
+    lx, hx, ly, hy = data.die_info.cpu().numpy()
+    WIDTH = base_size
+    HEIGHT = int(WIDTH * (hx - lx) / (hy - ly))
+    surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, WIDTH, HEIGHT)
+    ctx = cairo.Context(surface)
+    # Scale Image
+    ratio0, ratio1 = WIDTH / (hx - lx), HEIGHT / (hy - ly)
+    ctx.translate(-lx * ratio0, HEIGHT + ly * ratio1)
+    ctx.scale(ratio0, -ratio1)
+    # White Background
+    ctx.rectangle(lx, ly, hx - lx, hy - ly)
+    ctx.set_source_rgb(1.0, 1.0, 1.0)
+    ctx.fill()
+    # Bins / Grids
+    draw_grid(ctx, lx, hx, ly, hy, data.num_bin_x/8, data.num_bin_y/8)   
+    
+
+    # Draw cg_map
+    num_bins_x, num_bins_y = cg_map.shape
+    bin_width = (hx - lx) / num_bins_x
+    bin_height = (hy - ly) / num_bins_y
+
+    for i in range(num_bins_x):
+        for j in range(num_bins_y):
+            value = cg_map[i, j]
+            if value >= 0.8:
+                color_intensity = value  # Normalize if necessary
+                ctx.set_source_rgba(0.4, 0.8, 0.4, 0.8)  # Soft green
+                ctx.rectangle(lx + i * bin_width, ly + j * bin_height, bin_width, bin_height)
+                ctx.fill()
+            if value >= 0.85:
+                color_intensity = value  # Normalize if necessary
+                ctx.set_source_rgba(0.3, 0.6, 0.3, 0.8)  # Slightly darker green
+                ctx.rectangle(lx + i * bin_width, ly + j * bin_height, bin_width, bin_height)
+                ctx.fill()
+            if value >= 0.9:
+                color_intensity = value  # Normalize if necessary
+                ctx.set_source_rgba(0.2, 0.4, 0.2, 0.8)  # Even darker green
+                ctx.rectangle(lx + i * bin_width, ly + j * bin_height, bin_width, bin_height)
+                ctx.fill()
+    # Marco
+    draw_nodes(ctx, fix_node_pos, fix_node_size, (0.2, 0.6, 0.8, 0.2), lx, ly)  # Light blue for nodes
     surface.write_to_png(png_path)
     surface.finish()
 

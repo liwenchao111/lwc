@@ -150,6 +150,7 @@ class ParamScheduler:
         self.mov_congest_force_ratio = 0.0
         self.mov_pseudo_force_ratio = 0.0
         self.all_route_force_ratio = 0.0
+        self.cg_map_iter = self.iter 
         self.enable_route = args.use_route_force or args.use_cell_inflate
         self.use_cell_inflate = args.use_cell_inflate
         self.use_route_force = args.use_route_force
@@ -173,7 +174,7 @@ class ParamScheduler:
         self.curr_optimizer_cnt = 0
         self.prev_optimizer_cnt = 0
         self.max_route_opt = 5
-        self.max_route_force_opt = 3
+        self.max_route_force_opt = 10
         self.wait_router_sol_recorder =[]
         self.gr_sol_recorder = []
         self.grad_recorder = {
