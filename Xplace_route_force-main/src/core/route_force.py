@@ -22,6 +22,7 @@ class RouteCache:
         self.route_input_mat: torch.Tensor = None
         self.routeforce = None
         self.route_gradmat: torch.Tensor = None
+        self.route_gradmat_upset: torch.Tensor = None
         self.cg_mapAll: torch.Tensor = None
         self.mov_route_grad: torch.Tensor = None
         self.placeable_area = None
@@ -50,6 +51,7 @@ class RouteCache:
         self.route_input_mat = None
         self.routeforce = None
         self.route_gradmat = None
+        self.route_gradmat_upset = None
         self.cg_mapAll = None
         self.mov_route_grad = None
         self.placeable_area = None
@@ -221,14 +223,14 @@ def get_route_force(
     mov_pseudo_grad = torch.zeros_like(mov_node_pos)
 
     # 1) run global routing and compute gradient mat
-    grdb, route_input_mat, routeforce, route_gradmat = None, None, None, None
+    grdb, route_input_mat, routeforce, route_gradmat, route_gradmat_upset = None, None, None, None, None
     if ps.recal_conn_route_force:
         ps.recal_conn_route_force = False
         output = run_gr_and_fft_main(
             args, logger, data, rawdb, gpdb, ps, mov_node_pos, 
             constraint_fn=constraint_fn, skip_m1_route=skip_m1_route, run_fft=True, rerun_route=ps.rerun_route
         )
-        grdb, routeforce, cg_mapAll, route_input_mat, cg_mapHV, map_raw, map_2d, route_gradmat, gr_metrics = output
+        grdb, routeforce, cg_mapAll, route_input_mat, cg_mapHV, map_raw, map_2d, route_gradmat, route_gradmat_upset, gr_metrics = output
         dmd_map, wire_dmd_map, via_dmd_map, cap_map = map_raw
         dmd_map2d, wire_dmd_map2d, via_dmd_map2d, cap_map2d = map_2d
         
@@ -248,6 +250,7 @@ def get_route_force(
         route_cache.route_input_mat = route_input_mat
         route_cache.routeforce = routeforce
         route_cache.route_gradmat = route_gradmat
+        route_cache.route_gradmat_upset = route_gradmat_upset
         route_cache.cg_mapAll = cg_mapAll
         route_cache.mov_route_grad = mov_route_grad
     else:
@@ -255,15 +258,21 @@ def get_route_force(
         route_input_mat = route_cache.route_input_mat
         routeforce = route_cache.routeforce
         route_gradmat = route_cache.route_gradmat
+        route_gradmat_upset = route_cache.route_gradmat_upset
         cg_mapAll = route_cache.cg_mapAll
         mov_route_grad = route_cache.mov_route_grad
     
     # 2.2.1) compute congestion region force : push cells away from congested area
-    mov_congest_grad += cell_congestion_force(
+    mov_congest_grad[:filler_lhs] += cell_congestion_force(
         args, data, mov_node_pos, mov_node_size, expand_ratio,
         cg_mapAll, route_gradmat, routeforce, 0, filler_lhs, -1.0
-    )    
-
+    )
+    if num_fillers > 1:
+        mov_congest_grad[filler_lhs:filler_rhs] += cell_congestion_force(
+            args, data, mov_node_pos, mov_node_size, expand_ratio,
+            cg_mapAll, route_gradmat, routeforce, filler_lhs, filler_rhs, 1.0
+        )    
+    
     ps.mov_node_to_num_pseudo_pins = torch.zeros_like(mov_node_pos)
     
     if num_fillers > 0:
@@ -377,7 +386,11 @@ def run_gr_and_fft(args, logger, data, rawdb, gpdb, ps, mov_node_pos=None, grdb=
     min_cg = torch.tensor(0.8, dtype=torch.float).to(cg_mapAll.device)  # set too high may cause force_x(y)_map error i.e. route_force direction error
     route_input_mat = torch.where(cg_mapAll > min_cg, cg_mapAll, min_cg)#TODO modify:route_input_mat
     route_input_mat = torch.where(route_input_mat > 1.0, torch.pow(route_input_mat, 2), route_input_mat)
-    
+    route_input_mat_upset = cg_mapAll.clamp_(max=2.0,min=0.0)
+    route_input_mat_upset = 2.05 - route_input_mat_upset
+    route_input_mat_upset = torch.where(route_input_mat_upset > min_cg, route_input_mat_upset, min_cg)
+    route_input_mat_upset = torch.where(route_input_mat_upset > 1.0, torch.pow(route_input_mat_upset, 2), route_input_mat_upset)
+
     cg_mapH = dmd_map[hId::2].sum(dim=0) / cap_map[hId::2].sum(dim=0)
     cg_mapV = dmd_map[vId::2].sum(dim=0) / cap_map[vId::2].sum(dim=0)
     cg_mapHV = torch.stack((cg_mapH, cg_mapV))
@@ -403,6 +416,17 @@ def run_gr_and_fft(args, logger, data, rawdb, gpdb, ps, mov_node_pos=None, grdb=
         route_gradmat = torch.vstack(
             (force_x_map.unsqueeze(0), force_y_map.unsqueeze(0))
         ).contiguous()  # 2 x M x N
+    if run_fft:
+        fft_scale = get_fft_scale(route_input_mat_upset.shape[0], route_input_mat_upset.shape[1], device)
+        potential_scale, _, force_x_scale, force_y_scale, _, _ = fft_scale
+        fft_coeff = dct2(route_input_mat_upset)
+        force_x_map_upset = idxst_idct(fft_coeff * force_x_scale)
+        force_y_map_upset = idct_idxst(fft_coeff * force_y_scale)
+        potential_map = idct2(fft_coeff * potential_scale)
+        route_gradmat_upset = torch.vstack(
+            (force_x_map_upset.unsqueeze(0), force_y_map_upset.unsqueeze(0))
+        ).contiguous()  # 2 x M x N
+        
 
     # 1.5) print stat
     logger.info(
@@ -465,7 +489,7 @@ def run_gr_and_fft(args, logger, data, rawdb, gpdb, ps, mov_node_pos=None, grdb=
     if report_gr_metrics_only:
         return gr_metrics
 
-    return grdb, routeforce, cg_mapAll, route_input_mat, cg_mapHV, map_raw, map_2d, route_gradmat, gr_metrics
+    return grdb, routeforce, cg_mapAll, route_input_mat, cg_mapHV, map_raw, map_2d, route_gradmat, route_gradmat_upset, gr_metrics
 
 
 def conn_route_force(
@@ -520,11 +544,12 @@ def cell_congestion_force(
     unit_len_x, unit_len_y = routeforce.gcell_steps()
     unit_len_x /= data.site_width
     unit_len_y /= data.site_width
-
+    
     # value > 1.0 means congested
     node_cg_value = calc_node_congestion_value(cg_mapAll, mov_node_pos, num_bin_x, num_bin_y, unit_len_x, unit_len_y)
     if grad_weight > 0: # for filler
-        filler_weight = torch.where((node_cg_value > 0.5) & (node_cg_value < 1.0), 1.0, 0)
+        min_cg_one = torch.tensor(0.0, dtype=torch.float).to(cg_mapAll.device)
+        filler_weight = torch.where((node_cg_value > 0.5) & (node_cg_value < 1.0), node_cg_value*1.5, min_cg_one)
     else: # for movable cells
         high_indices, medium_indices, low_indices = classify_cell_according_pins(data.mov_node_to_num_pins, lhs, rhs)
         min_cg_one = torch.tensor(0.7, dtype=torch.float).to(cg_mapAll.device)        
@@ -532,30 +557,20 @@ def cell_congestion_force(
         filler_weight = torch.where(node_cg_value > min_cg_one, node_cg_value, torch.tensor(0.0, dtype=torch.float).to(cg_mapAll.device))
         filler_weight[medium_indices] = 0.8
         filler_weight[low_indices] = 0.0
-        filler_weight.clamp_(max=2.0)
-        import numpy as np
-
-        rhs_values = filler_weight[rhs:]
-        if (rhs_values > 0.5).any() and (rhs_values < 8.0).any():
-            filler_weight[rhs:] *= -1.5
-        else:
-            filler_weight[rhs:] = 0.0
-
+        filler_weight.clamp_(max=2.0,min=0)
     
-    num = mov_node_pos.size(0)
-    # filler_weight = torch.ones(rhs - lhs, device=mov_node_pos.device)    
     filler_route_grad = routeforce.filler_route_grad(
-        mov_node_pos,
-        mov_node_size,
+        mov_node_pos[lhs:rhs],
+        mov_node_size[lhs:rhs],
         filler_weight,
-        expand_ratio,
+        expand_ratio[lhs:rhs],
         route_gradmat,
         grad_weight,
         unit_len_x,
         unit_len_y,
         num_bin_x,
         num_bin_y,
-        num
+        rhs - lhs
     )
     
     filler_route_grad =torch.where(filler_route_grad.abs() > 1e-3, filler_route_grad, torch.tensor(0.0, dtype=torch.float).to(filler_route_grad.device))
@@ -854,7 +869,7 @@ def route_inflation(
         constraint_fn=constraint_fn, skip_m1_route=skip_m1_route, rerun_route=rerun_route,
         run_fft=ps.open_route_force_opt, **kwargs
     )
-    grdb, routeforce, cg_mapAll, _, cg_mapHV, _, _, route_gradmat, gr_metrics = output
+    grdb, routeforce, cg_mapAll, _, cg_mapHV, _, _, route_gradmat,_, gr_metrics = output
     numOvflNets, gr_wirelength, gr_numVias, gr_numShorts, rc_hor_mean, rc_ver_mean = gr_metrics
     min_cg_map_inflation = torch.tensor(0.0, dtype=torch.float).to(cg_mapAll.device)
     cg_map_inflation = torch.where(cg_mapAll > 1, cg_mapAll - 1, min_cg_map_inflation)

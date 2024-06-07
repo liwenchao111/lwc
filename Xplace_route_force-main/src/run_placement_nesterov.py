@@ -293,7 +293,7 @@ def run_placement_main_nesterov(args, logger):
             logger.info(log_str)
 
             #if args.draw_placement and ps.open_route_force_opt and iteration % 1 == 0:
-            if args.draw_placement and iteration % 1000 == 0 and ps.open_route_force_opt:
+            if args.draw_placement and iteration % 10 == 0 and ps.open_route_force_opt:
                 info = (iteration, hpwl, data.design_name)
 
                 mov_node_pos_to_draw = mov_node_pos[mov_lhs:mov_rhs, ...].clone()
