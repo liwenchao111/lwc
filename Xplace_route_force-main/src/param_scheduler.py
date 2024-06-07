@@ -174,7 +174,7 @@ class ParamScheduler:
         self.curr_optimizer_cnt = 0
         self.prev_optimizer_cnt = 0
         self.max_route_opt = 5
-        self.max_route_force_opt = 10
+        self.max_route_force_opt = 20
         self.wait_router_sol_recorder =[]
         self.gr_sol_recorder = []
         self.grad_recorder = {
@@ -606,7 +606,7 @@ class ParamScheduler:
         for idx, (gr_metrics, hpwl, overflow, mov_node_pos) in enumerate(self.gr_sol_recorder):
             numOvflNets, gr_wirelength, gr_numVias, gr_numShorts, rc_hor_mean, rc_ver_mean = gr_metrics
             # gr_score = weight[0] * gr_wirelength + weight[1] * gr_numVias + weight[1] * gr_numShorts
-            if gr_numShorts < best_value:
+            if gr_numShorts < best_value and gr_wirelength < self.gr_sol_recorder[0][0][1]*1.02:
                 # NOTE: I think gr_numShorts is the most important metric...
                 best_value = gr_numShorts
                 best_idx = idx    

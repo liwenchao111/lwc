@@ -26,33 +26,11 @@ def get_init_density_map(rawdb, gpdb, data: PlaceData, args, logger):
     )
     init_density_map = init_density_map.contiguous()
     
-    # handle_macro_margin_init_density
-    # num_bin_x, num_bin_y = data.num_bin_x, data.num_bin_y
-    # unit_len_x, unit_len_y = data.unit_len[0], data.unit_len[1]
-    # macro_pos = data.node_pos[data.node_type_indices[2][0]:data.node_type_indices[2][1]]
-    # macro_size = data.node_size[data.node_type_indices[2][0]:data.node_type_indices[2][1]]
-
-    # x1 = torch.clamp(((macro_pos[:, 0] - macro_size[:, 0]/2) / unit_len_x).floor().int(), 0, num_bin_x - 1)
-    # x2 = torch.clamp(((macro_pos[:, 0] + macro_size[:, 0]/2) / unit_len_x).ceil().int(), 0, num_bin_x - 1)
-    # y1 = torch.clamp(((macro_pos[:, 1] - macro_size[:, 1]/2) / unit_len_y).floor().int(), 0, num_bin_y - 1)
-    # y2 = torch.clamp(((macro_pos[:, 1] + macro_size[:, 1]/2) / unit_len_y).ceil().int(), 0, num_bin_y - 1)
-
-    # x1_0 = torch.clamp(x1 - 2, 0, num_bin_x - 1)
-    # x2_0 = torch.clamp(x2 + 2, 0, num_bin_x - 1)
-    # y1_0 = torch.clamp(y1 - 2, 0, num_bin_y - 1)
-    # y2_0 = torch.clamp(y2 + 2, 0, num_bin_y - 1)
-
-    # for i in range(macro_pos.shape[0]):
-    #     init_density_map[x1_0[i]:x1[i], y1_0[i]:y2_0[i]] = 1.0
-    #     init_density_map[x2[i]:x2_0[i], y1_0[i]:y2_0[i]] = 1.0
-    #     init_density_map[x1[i]:x2[i], y1_0[i]:y1[i]] = 1.0
-    #     init_density_map[x1[i]:x2[i], y2[i]:y2_0[i]] = 1.0
-    
     if (init_density_map > 1).sum() > 0:
         logger.warning("Some bins in init_density_map are overflow. Clamp them.")
     if (init_density_map < 0).sum() > 0:
         logger.error("init_density_map has negative value. Please check.")
-    if (args.use_route_force or args.use_cell_inflate) and data.use_whitespace_redistribution:
+    if (args.use_route_force or args.use_cell_inflate):# and data.use_whitespace_redistribution:
         # consider snet as plaement blkg in density map to resolve M2 Vertical 
         # SNet pin access problem
         if gpdb is not None and gpdb.m1direction() == 0:

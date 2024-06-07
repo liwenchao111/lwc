@@ -10,3 +10,5 @@ python -u run_cugr.py --dataset_root yourpath/Xplace/data/raw/ispd2015_fix --pla
 ```bash
 python run_cugr.py --parse --log_file ./test_xplace_route.log
 ```
+
+such：python -u run_cugr.py --dataset_root /home/ldx/lwc/Xplace_route_force-main/data/raw/ispd2015_fix --placement_root /home/ldx/lwc/Xplace_route_force-main/result/2024-06-06-16:26:42 | tee test_xplace_route.log

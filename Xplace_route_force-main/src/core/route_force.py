@@ -388,8 +388,8 @@ def run_gr_and_fft(args, logger, data, rawdb, gpdb, ps, mov_node_pos=None, grdb=
     map_raw = (dmd_map, wire_dmd_map, via_dmd_map, cap_map)
     map_2d = (dmd_map2d, wire_dmd_map2d, via_dmd_map2d, cap_map2d)
     
-    set_macro_region_congestion_one(cg_mapAll, data, routeforce)
-    handle_macro_margin_init_density(cg_mapAll, data, args, routeforce)
+    #set_macro_region_congestion_one(cg_mapAll, data, routeforce)
+    #handle_macro_margin_init_density(cg_mapAll, data, args, routeforce)
 
     # 1.4) compute congestion map's gradient
     route_gradmat = None

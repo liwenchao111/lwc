@@ -1,6 +1,6 @@
 #!/bin/bash
 # nohup ./run_innovus.sh > nohup.out 2>&1 &
-NAME="2024-03-04-17:54:32"
+NAME="2024-06-06-16:26:42"
 
 # cp -r $XPLACE_HOME/data/raw/ispd2015_fix $XPLACE_HOME/tool/innovus_ispd2015_fix
 
