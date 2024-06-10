@@ -59,7 +59,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("filler_route_grad", &gr::RouteForce::calcFillerRouteGrad, py::return_value_policy::move)
         .def("pseudo_grad", &gr::RouteForce::calcPseudoPinGrad, py::return_value_policy::move)
         .def("inflate_ratio", &gr::RouteForce::calcNodeInflateRatio, py::return_value_policy::move)
-        .def("inflate_pin_rel_cpos", &gr::RouteForce::calcInflatedPinRelCpos, py::return_value_policy::move);
+        //.def("inflate_pin_rel_cpos", &gr::RouteForce::calcInflatedPinRelCpos, py::return_value_policy::move)
+        //net_route_force
+        //.def("net_center_pos", &gr::RouteForce::calcNetCenterPos, py::return_value_policy::move);
     
     m.def("create_grdatabase", [](std::shared_ptr<db::Database> rawdb, std::shared_ptr<gp::GPDatabase> gpdb) {
         logger.enable_logger();

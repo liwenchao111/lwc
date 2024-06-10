@@ -54,6 +54,10 @@ public:
                                          torch::Tensor old_pin_rel_cpos,
                                          torch::Tensor pin_id2node_id,
                                          int num_movable_nodes);
+//    torch::Tensor calcNetCenterPos(torch::Tensor net_id2node_id,
+//                                         torch::Tensor mov_node_pos,
+//                                         torch::Tensor mov_node_size,
+//                                         int num_nets);
     int getNumOvflNets();
     int getMicrons();
     std::tuple<int, int> getGcellStep();

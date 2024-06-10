@@ -157,6 +157,13 @@ torch::Tensor RouteForce::calcInflatedPinRelCpos(torch::Tensor node_inflate_rati
     return router.calcInflatedPinRelCpos(node_inflate_ratio, old_pin_rel_cpos, pin_id2node_id, num_movable_conn_nodes);
 }
 
+//torch::Tensor RouteForce::calcNetCenterPos(torch::Tensor net_id2node_id,
+//                                            torch::Tensor mov_node_pos,
+//                                            torch::Tensor mov_node_size,
+//                                            int num_nets) {
+//    return router.calcNetCenterPos(net_id2node_id, mov_node_pos, mov_node_size, num_net);
+//}
+
 int RouteForce::getNumOvflNets() { return router.getNumOvflNets(); }
 
 int RouteForce::getMicrons() { return grdb.microns; }

@@ -330,6 +330,22 @@ __global__ void inflatePinRelCpos(
     }
 }
 
+//__global__ void calc_net_center_pos(
+//    const torch::PackedTensorAccessor32<int16_t, 2, torch::RestrictPtrTraits> net_id2node_id,
+//    const torch::PackedTensorAccessor32<float, 2, torch::RestrictPtrTraits> mov_node_pos,
+//    const torch::PackedTensorAccessor32<float, 1, torch::RestrictPtrTraits> mov_node_size,
+//   torch::PackedTensorAccessor32<float, 2, torch::RestrictPtrTraits> net_center_pos,
+//    int num_nets,
+//) {
+//    const int index = blockIdx.x * blockDim.x + threadIdx.x;
+//   const int i = index >> 1;
+//    if (i < num_nets) {
+//        const int c = index & 1;
+//        int net_num_nodes = 0;
+//        for (int j = 0; net_id2node_id[][0]==i; j++) {
+//    }
+//}
+
 __global__ void pseudoPinForce(
     const torch::PackedTensorAccessor32<float, 2, torch::RestrictPtrTraits> node_pos,
     const torch::PackedTensorAccessor32<float, 2, torch::RestrictPtrTraits> pseudo_pin_pos,
@@ -573,5 +589,26 @@ torch::Tensor GPURouter::calcInflatedPinRelCpos(torch::Tensor node_inflate_ratio
 
     return new_pin_rel_cpos;
 }
+
+// torch::Tensor GPURouter::calcNetCenterPos(torch::Tensor net_id2node_id,
+//                                                 torch::Tensor mov_node_pos,
+//                                                 torch::Tensor mov_node_size,
+//                                                 int num_nets) {
+
+//     const int threads = 128;
+//     const int blocks = (num_nets*2 + threads - 1) / threads;
+
+//     auto net_center_pos = torch::zeros({num_nets, 2}, torch::dtype(mov_node_pos.dtype()).device(mov_node_pos.device()));
+
+//     calc_net_center_pos<<<blocks, threads, 0>>>(
+//         net_id2node_id.packed_accessor32<int16_t, 2, torch::RestrictPtrTraits>(),
+//         mov_node_pos.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
+//         mov_node_size.packed_accessor32<float, 1, torch::RestrictPtrTraits>(),
+//         net_center_pos.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
+//         num_nets
+//     );
+
+//     return net_center_pos;
+// }
 
 }  // namespace gr

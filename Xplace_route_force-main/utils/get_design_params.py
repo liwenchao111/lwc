@@ -10,7 +10,6 @@ def find_benchmark(dataset_root, benchmark):
         "ispd2018": os.path.join(dataset_root, "ispd2018"),
         "ispd2019_no_fence": os.path.join(dataset_root, "ispd2019_no_fence"),
         "iccad2019": os.path.join(dataset_root, "iccad2019"),
-        "ispd2018": os.path.join(dataset_root, "ispd2018"),
     }
     root = bm_to_root[benchmark]
     all_designs = [i for i in os.listdir(root) if os.path.isdir(os.path.join(root, i))]
