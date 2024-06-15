@@ -76,10 +76,20 @@ public:
                                          torch::Tensor old_pin_rel_cpos,
                                          torch::Tensor pin_id2node_id,
                                          int num_movable_nodes);
-//    torch::Tensor calcNetCenterPos(torch::Tensor net_id2node_id,
-//                                         torch::Tensor mov_node_pos,
-//                                         torch::Tensor mov_node_size,
-//                                         int num_nets);
+    torch::Tensor calcNetCenterPos(torch::Tensor node_pos,
+                                    torch::Tensor pin_id2node_id,
+                                    torch::Tensor pin_rel_cpos,
+                                    torch::Tensor hyperedge_list,
+                                    torch::Tensor hyperedge_list_end,
+                                    torch::Tensor selected_net);
+    torch::Tensor netToNodeForce(torch::Tensor net_center_grad,
+                                    torch::Tensor hyperedge_list,
+                                    torch::Tensor hyperedge_list_end,
+                                    torch::Tensor node2pin_list,
+                                    torch::Tensor node2pin_list_end,
+                                    torch::Tensor pin_id2node_id,
+                                    torch::Tensor selected_net,
+                                    int num_movable_nodes);
     int getNumOvflNets() { return numOvflNets; }
 
 private:

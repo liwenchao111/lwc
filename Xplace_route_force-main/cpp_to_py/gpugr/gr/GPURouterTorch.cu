@@ -41,6 +41,95 @@ __global__ void calc_node_grad_deterministic_cuda_kernel(
     }
 }
 
+__global__ void node_pos_to_pin_pos_cuda_kernel(
+    const torch::PackedTensorAccessor32<float, 2, torch::RestrictPtrTraits> node_pos,
+    const torch::PackedTensorAccessor32<int64_t, 1, torch::RestrictPtrTraits> pin_id2node_id,
+    torch::PackedTensorAccessor32<float, 2, torch::RestrictPtrTraits> pin_pos,
+    int num_pins) {
+    const int index = blockIdx.x * blockDim.x + threadIdx.x;
+    const int i = index >> 1;  // pin index
+    if (i < num_pins) {
+        const int c = index & 1;  // channel index
+        int64_t node_id = pin_id2node_id[i];
+        pin_pos[i][c] += node_pos[node_id][c];
+    }
+}
+
+__global__ void calc_net_center_pos(
+    const torch::PackedTensorAccessor32<float, 2, torch::RestrictPtrTraits> pin_pos,
+    const torch::PackedTensorAccessor32<int64_t, 1, torch::RestrictPtrTraits> hyperedge_list,
+    const torch::PackedTensorAccessor32<int64_t, 1, torch::RestrictPtrTraits> hyperedge_list_end,
+    const torch::PackedTensorAccessor32<float, 1, torch::RestrictPtrTraits> selected_nets,
+    torch::PackedTensorAccessor32<float, 2, torch::RestrictPtrTraits> net_center_pos,
+    int num_nets){
+        const int index = blockIdx.x * blockDim.x + threadIdx.x;
+        const int i = index >> 1;
+        if (i < num_nets && selected_nets[i]) {
+            const int c = index & 1;  // channel index
+            int64_t start_idx = 0;
+            if (i != 0) {
+                start_idx = hyperedge_list_end[i - 1];
+            }
+            int64_t end_idx = hyperedge_list_end[i];
+            float x_sum = 0.0f;
+            if (end_idx != start_idx) {        
+                for (int64_t idx = start_idx; idx < end_idx; idx++) {
+                    int64_t pin_id = hyperedge_list[idx];
+                    x_sum += pin_pos[pin_id][c];
+                }
+            net_center_pos[i][c] = x_sum / (end_idx - start_idx);  // net index
+            }
+        }
+    }    
+
+__global__ void net_center_force_to_pin(
+    const torch::PackedTensorAccessor32<float, 2, torch::RestrictPtrTraits> net_center_grad,
+    const torch::PackedTensorAccessor32<int64_t, 1, torch::RestrictPtrTraits> hyperedge_list,
+    const torch::PackedTensorAccessor32<int64_t, 1, torch::RestrictPtrTraits> hyperedge_list_end,
+    torch::PackedTensorAccessor32<float, 2, torch::RestrictPtrTraits> pin_grad,
+    const torch::PackedTensorAccessor32<float, 1, torch::RestrictPtrTraits> selected_nets,
+    int num_nets){
+        const int index = blockIdx.x * blockDim.x + threadIdx.x;
+        const int i = index >> 1;
+        if (i < num_nets && selected_nets[i]) {
+            const int c = index & 1;  // channel index
+            int64_t start_idx = (i == 0) ? 0 : hyperedge_list_end[i - 1];
+            int64_t end_idx = hyperedge_list_end[i];
+            if (end_idx > start_idx) {        
+                for (int64_t idx = start_idx; idx < end_idx; idx++) {
+                    int64_t pin_id = hyperedge_list[idx];
+                    if (pin_id < pin_grad.size(0) && c < pin_grad.size(1)) { 
+                        pin_grad[pin_id][c] += net_center_grad[i][c];
+                    }
+                }
+            }
+        }
+    }  
+
+__global__ void pin_grad_to_node_grad(
+    torch::PackedTensorAccessor32<float, 2, torch::RestrictPtrTraits> node_grad,
+    const torch::PackedTensorAccessor32<float, 2, torch::RestrictPtrTraits> pin_grad,
+    const torch::PackedTensorAccessor32<int64_t, 1, torch::RestrictPtrTraits> node2pin_list,
+    const torch::PackedTensorAccessor32<int64_t, 1, torch::RestrictPtrTraits> node2pin_list_end,
+    int num_nodes) {
+    const int index = blockIdx.x * blockDim.x + threadIdx.x;
+    const int i = index >> 1;  // node index
+    if (i < num_nodes) {
+        const int c = index & 1;  // channel index
+        int64_t start_idx = 0;
+        if (i != 0) {
+            start_idx = node2pin_list_end[i - 1];
+        }
+        int64_t end_idx = node2pin_list_end[i];
+        if (end_idx != start_idx) {
+            node_grad[i][c] += pin_grad[node2pin_list[start_idx]][c];
+            for (int64_t idx = start_idx + 1; idx < end_idx; idx++) {
+                node_grad[i][c] += pin_grad[node2pin_list[idx]][c];
+            }
+        }
+    }
+}
+
 __global__ void getDmdTensor(
     torch::PackedTensorAccessor32<float, 3, torch::RestrictPtrTraits> dmdMap,
     torch::PackedTensorAccessor32<float, 3, torch::RestrictPtrTraits> wireDmdMap,
@@ -181,7 +270,7 @@ __global__ void fillerRouteForce(
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < num_fillers) {
         float weight = filler_weight[i];
-        if (1 > 0) {
+        if (weight > 0) {
             const float x_l = (filler_pos[i][0] - filler_size[i][0] / 2) / unit_len_x;
             const float x_h = (filler_pos[i][0] + filler_size[i][0] / 2) / unit_len_x;
             const float y_l = (filler_pos[i][1] - filler_size[i][1] / 2) / unit_len_y;
@@ -329,22 +418,6 @@ __global__ void inflatePinRelCpos(
         }
     }
 }
-
-//__global__ void calc_net_center_pos(
-//    const torch::PackedTensorAccessor32<int16_t, 2, torch::RestrictPtrTraits> net_id2node_id,
-//    const torch::PackedTensorAccessor32<float, 2, torch::RestrictPtrTraits> mov_node_pos,
-//    const torch::PackedTensorAccessor32<float, 1, torch::RestrictPtrTraits> mov_node_size,
-//   torch::PackedTensorAccessor32<float, 2, torch::RestrictPtrTraits> net_center_pos,
-//    int num_nets,
-//) {
-//    const int index = blockIdx.x * blockDim.x + threadIdx.x;
-//   const int i = index >> 1;
-//    if (i < num_nets) {
-//        const int c = index & 1;
-//        int net_num_nodes = 0;
-//        for (int j = 0; net_id2node_id[][0]==i; j++) {
-//    }
-//}
 
 __global__ void pseudoPinForce(
     const torch::PackedTensorAccessor32<float, 2, torch::RestrictPtrTraits> node_pos,
@@ -590,25 +663,100 @@ torch::Tensor GPURouter::calcInflatedPinRelCpos(torch::Tensor node_inflate_ratio
     return new_pin_rel_cpos;
 }
 
-// torch::Tensor GPURouter::calcNetCenterPos(torch::Tensor net_id2node_id,
-//                                                 torch::Tensor mov_node_pos,
-//                                                 torch::Tensor mov_node_size,
-//                                                 int num_nets) {
+torch::Tensor GPURouter::calcNetCenterPos(torch::Tensor node_pos,
+                                    torch::Tensor pin_id2node_id,
+                                    torch::Tensor pin_rel_cpos,
+                                    torch::Tensor hyperedge_list,
+                                    torch::Tensor hyperedge_list_end,
+                                    torch::Tensor selected_net) {
+    cudaSetDevice(node_pos.get_device());
 
-//     const int threads = 128;
-//     const int blocks = (num_nets*2 + threads - 1) / threads;
 
-//     auto net_center_pos = torch::zeros({num_nets, 2}, torch::dtype(mov_node_pos.dtype()).device(mov_node_pos.device()));
+    const auto num_pins = pin_rel_cpos.size(0);
+    const auto num_nets =selected_net.size(0);
 
-//     calc_net_center_pos<<<blocks, threads, 0>>>(
-//         net_id2node_id.packed_accessor32<int16_t, 2, torch::RestrictPtrTraits>(),
-//         mov_node_pos.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
-//         mov_node_size.packed_accessor32<float, 1, torch::RestrictPtrTraits>(),
-//         net_center_pos.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
-//         num_nets
-//     );
+    auto net_center_pos = torch::zeros({num_nets, 2}, torch::dtype(node_pos.dtype()).device(node_pos.device()));
+    auto pin_pos = pin_rel_cpos.clone(); 
 
-//     return net_center_pos;
-// }
+    const int threads = 128;
+    const int blocks = (num_pins * 2 + threads - 1) / threads;
+
+    node_pos_to_pin_pos_cuda_kernel<<<blocks, threads, 0>>>(
+        node_pos.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
+        pin_id2node_id.packed_accessor32<int64_t, 1, torch::RestrictPtrTraits>(),
+        pin_pos.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
+        num_pins);
+
+    const int threads2 = 128;
+    const int blocks2 = (num_nets * 2 + threads2 - 1) / threads2;
+    
+    calc_net_center_pos<<<blocks2, threads2, 0>>>(
+        pin_pos.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
+        hyperedge_list.packed_accessor32<int64_t, 1, torch::RestrictPtrTraits>(),
+        hyperedge_list_end.packed_accessor32<int64_t, 1, torch::RestrictPtrTraits>(),
+        selected_net.packed_accessor32<float, 1, torch::RestrictPtrTraits>(),
+        net_center_pos.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
+        num_nets);
+
+    return net_center_pos;
+    }
+
+torch::Tensor GPURouter::netToNodeForce(torch::Tensor net_center_grad,
+                                        torch::Tensor hyperedge_list,
+                                        torch::Tensor hyperedge_list_end,
+                                        torch::Tensor node2pin_list,
+                                        torch::Tensor node2pin_list_end,
+                                        torch::Tensor pin_id2node_id,
+                                        torch::Tensor selected_net,
+                                        int num_movable_nodes) {
+    cudaSetDevice(net_center_grad.get_device());
+    
+    const auto num_nodes = num_movable_nodes;
+    const auto num_pins = pin_id2node_id.size(0);
+    const auto num_nets = hyperedge_list_end.size(0);
+    const auto num_channels = 2;
+    
+    auto pin_grad = torch::zeros({num_pins, num_channels}, torch::dtype(net_center_grad.dtype()).device(net_center_grad.device()));
+    auto node_grad = torch::zeros({num_nodes, num_channels}, torch::dtype(net_center_grad.dtype()).device(net_center_grad.device()));
+    
+    const int threads = 128;
+    const int blocks = (num_nets * 2 + threads - 1) / threads;
+    
+    net_center_force_to_pin<<<blocks, threads, 0>>>(
+        net_center_grad.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
+        hyperedge_list.packed_accessor32<int64_t, 1, torch::RestrictPtrTraits>(),
+        hyperedge_list_end.packed_accessor32<int64_t, 1, torch::RestrictPtrTraits>(),
+        pin_grad.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
+        selected_net.packed_accessor32<float, 1, torch::RestrictPtrTraits>(),
+        num_nets);
+    
+    // 检查 CUDA 内核调用是否成功
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        std::cerr << "CUDA error after net_center_force_to_pin: " << cudaGetErrorString(err) << std::endl;
+    }
+    
+    const int threads2 = 128;
+    const int blocks2 = (num_nodes * 2 + threads2 - 1) / threads2;
+    
+    pin_grad_to_node_grad<<<blocks2, threads2, 0>>>(
+        node_grad.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
+        pin_grad.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
+        node2pin_list.packed_accessor32<int64_t, 1, torch::RestrictPtrTraits>(),
+        node2pin_list_end.packed_accessor32<int64_t, 1, torch::RestrictPtrTraits>(),
+        num_nodes);
+    
+    // 检查 CUDA 内核调用是否成功
+    err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        std::cerr << "CUDA error after pin_grad_to_node_grad: " << cudaGetErrorString(err) << std::endl;
+    }
+    
+    // 同步 CUDA 设备以确保所有内核执行完毕
+    cudaDeviceSynchronize();
+    
+    return node_grad;
+}
+
 
 }  // namespace gr

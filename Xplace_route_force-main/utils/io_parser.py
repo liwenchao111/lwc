@@ -155,6 +155,7 @@ class IOParser(object):
         pin_size = gpdb.pin_size_tensor()
 
         pin_id2node_id = gpdb.pin_id2node_id_tensor()
+        pin_id2net_id = gpdb.pin_id2net_id_tensor()
         (
             hyperedge_index,
             hyperedge_list,
@@ -166,11 +167,22 @@ class IOParser(object):
             node2pin_list,
             node2pin_list_end,
         ) = gpdb.node2pin_info_tensor()
+        
+        #(
+        #    net2node_index,
+        #    net2node_list,
+        #    net2node_list_end,
+        #) = gpdb,net2node_info_tensor()
+        
+
 
         node_id2region_id, region_boxes, region_boxes_end = gpdb.region_info_tensor()
 
         node_type_indices = gpdb.node_type_indices()
         node_id2node_name = gpdb.node_id2node_name()
+        
+        
+        
         all_node_types = []
         mov_end_idx = None
         fix_end_idx = None
@@ -207,6 +219,7 @@ class IOParser(object):
             "pin_rel_lpos": pin_rel_lpos.contiguous(),
             "pin_size": pin_size.contiguous(),
             "pin_id2node_id": pin_id2node_id.long().contiguous(),
+            "pin_id2net_id": pin_id2net_id.long().contiguous(),
             "hyperedge_index": hyperedge_index.long().contiguous(),
             "hyperedge_list": hyperedge_list.long().contiguous(),
             "hyperedge_list_end": hyperedge_list_end.long().contiguous(),

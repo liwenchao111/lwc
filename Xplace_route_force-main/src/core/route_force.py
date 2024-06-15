@@ -285,13 +285,11 @@ def get_route_force(
     else:
         mov_pseudo_grad = None
     
-    # # 2.4) compute pseudo net force, a force to push cell base the congested area size
-    # net_force_node_pos = torch.cat([mov_node_pos,data.node_pos[mov_rhs:]])
-    # net_force_node_size = torch.cat([mov_node_pos,data.node_size[mov_rhs:]])
-    # mov_congest_grad[:filler_lhs] += net_congestion_force(
-    #     args, data, net_force_node_pos, net_force_node_size, expand_ratio,
-    #     cg_mapAll, route_gradmat, routeforce, 0, filler_lhs, -1.0
-    # )
+    
+    mov_congest_grad[:filler_lhs] += net_congestion_force(
+        args, data, mov_node_pos, mov_node_size, expand_ratio,
+        cg_mapAll, route_gradmat, routeforce, 0, filler_lhs, -1.0
+    )
     
     
     
@@ -482,12 +480,6 @@ def run_gr_and_fft(args, logger, data, rawdb, gpdb, ps, mov_node_pos=None, grdb=
             numOvflNets, gr_wirelength, gr_numVias, gr_numShorts, rc_hor_mean, rc_ver_mean
         )
         draw_cg_fig(args, cg_mapAll, (data.design_name, iteration, "cg_mapAll"), title)
-        # draw_cg_fig(args, cg_mapH, (data.design_name, iteration, "cg_mapH"), title)
-        # draw_cg_fig(args, cg_mapV, (data.design_name, iteration, "cg_mapV"), title)
-        # if run_fft:
-        #     draw_route_gradmat_fig(args, route_gradmat[0], (data.design_name, iteration, "route_gradmatX"), title)
-        #     draw_route_gradmat_fig(args, route_gradmat[1], (data.design_name, iteration, "route_gradmatY"), title)
-        #     draw_route_gradmat_fig(args, potential_map, (data.design_name, iteration, "potential_map"), title)
         
     if report_gr_metrics_only:
         return gr_metrics
@@ -527,43 +519,57 @@ def conn_route_force(
         unit_via_cost,
         num_conn_nodes,
     )
-
-    # # force reduction
-    # non_zero_row_indices = torch.nonzero(conn_route_grad.norm(p=1, dim=1), as_tuple=True)[0]
-    # max_route_force_num = min(int(0.3 * num_conn_nodes), int(0.5 * non_zero_row_indices.size(0)))
-    # if non_zero_row_indices.size(0) >= max_route_force_num:
-    #     non_zero_row_sizes = conn_route_grad[non_zero_row_indices].norm(p=1, dim=1)
-    #     _, sorted_indices = torch.sort(non_zero_row_sizes, descending=True)
-    #     rows_to_zero = non_zero_row_indices[sorted_indices[max_route_force_num:]]
-    #     conn_route_grad[rows_to_zero, :] = 0
-    
+        
     return conn_route_grad
 
-# def net_congestion_force(
-#     args, data, mov_node_pos, mov_node_size, expand_ratio, cg_mapAll, route_gradmat, routeforce, lhs, rhs, grad_weight=1.0
-# ):
-#     # NOTE: grad_weight == 1.0, push cell to congested area
-#     num_bin_x, num_bin_y = route_gradmat.shape[1], route_gradmat.shape[2]
-#     unit_len_x, unit_len_y = routeforce.gcell_steps()
-#     unit_len_x /= data.site_width
-#     unit_len_y /= data.site_width
+def net_congestion_force(
+    args, data, mov_node_pos, mov_node_size, expand_ratio, cg_mapAll, route_gradmat, routeforce, lhs, rhs, grad_weight=1.0
+):
     
-#     node_cg_value = calc_node_congestion_value(cg_mapAll, mov_node_pos, num_bin_x, num_bin_y, unit_len_x, unit_len_y)
+    # NOTE: grad_weight == 1.0, push cell to congested area
+    num_bin_x, num_bin_y = route_gradmat.shape[1], route_gradmat.shape[2]
+    unit_len_x, unit_len_y = routeforce.gcell_steps()
+    unit_len_x /= data.site_width
+    unit_len_y /= data.site_width
+    selected_nets = (data.net_to_num_pins > 2).float() 
     
-#     unique_net_ids, inverse_indices = torch.unique(data.pin_id2net_id, return_inverse=True)
-#     net_id2node_id = torch.stack((unique_net_ids[inverse_indices], data.pin_id2node_id), dim=1)
-#     net_id2node_id = torch.unique(net_id2node_id, dim=0)
-#     maxnodeid =  max(net_id2node_id[:,1].tolist())
-#     mark_nets = torch.nonzero(data.net_to_num_pins > 3, as_tuple=False).squeeze()
-#     first_column = net_id2node_id[:, 0]
-#     nonzero_indices = torch.nonzero(first_column != first_column.roll(1), as_tuple=False)
-#     net_end_index = (nonzero_indices[1:] + 1).flatten().tolist()
-#     net_center_pos: torch.Tensor = routeforce.net_center_pos(net_id2node_id,mov_node_pos,mov_node_size,data.num_nets)
+    net_center_pos = routeforce.calc_net_center_pos(
+        mov_node_pos[lhs:rhs],
+        data.pin_id2node_id,
+        data.pin_rel_cpos,
+        data.hyperedge_list,
+        data.hyperedge_list_end,
+        selected_nets
+    )
     
-
+    net_center_size = torch.ones_like(net_center_pos)
+    net_expend_ratio = torch.ones_like(selected_nets) 
+    net_center_grad = routeforce.filler_route_grad(
+        net_center_pos,
+        net_center_size,
+        selected_nets,
+        net_expend_ratio,
+        route_gradmat,
+        grad_weight,
+        unit_len_x,
+        unit_len_y,
+        num_bin_x,
+        num_bin_y,
+        data.num_nets
+    )        
+    net2node_grad = torch.zeros_like(mov_node_pos[lhs:rhs])
+    #net2node_grad = routeforce.net_to_node_force(
+    #    net_center_grad,
+    #    data.hyperedge_list,
+    #    data.hyperedge_list_end,
+    #    data.node2pin_list,
+    #    data.node2pin_list_end,
+    #    data.pin_id2node_id,
+    #    selected_nets,
+    #    rhs
+    #)
     
-#     return net_id2node_id
-#     #net_congestion = calc_node_net_congestion_value(cg_mapAll,data.node2pin_list,data.node2pin_list_end,mov_node_pos,mov_node_size,num_bin_x,num_bin_y,unit_len_x,unit_len_y)
+    return net2node_grad
 
 def cell_congestion_force(
     args, data, mov_node_pos, mov_node_size, expand_ratio, cg_mapAll, route_gradmat, routeforce, lhs, rhs, grad_weight=1.0
