@@ -59,7 +59,8 @@ public:
                                     torch::Tensor pin_rel_cpos,
                                     torch::Tensor hyperedge_list,
                                     torch::Tensor hyperedge_list_end,
-                                    torch::Tensor selected_net);
+                                    torch::Tensor selected_net,
+                                    torch::Tensor net_mask);
     torch::Tensor netToNodeForce(torch::Tensor net_center_grad,
                                     torch::Tensor hyperedge_list,
                                     torch::Tensor hyperedge_list_end,

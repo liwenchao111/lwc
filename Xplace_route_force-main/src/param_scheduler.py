@@ -175,6 +175,7 @@ class ParamScheduler:
         self.prev_optimizer_cnt = 0
         self.max_route_opt = 5
         self.max_route_force_opt = 20
+        self.route_net_force_iter = 0
         self.wait_router_sol_recorder =[]
         self.gr_sol_recorder = []
         self.grad_recorder = {

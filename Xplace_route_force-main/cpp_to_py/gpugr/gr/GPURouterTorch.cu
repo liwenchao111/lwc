@@ -60,11 +60,12 @@ __global__ void calc_net_center_pos(
     const torch::PackedTensorAccessor32<int64_t, 1, torch::RestrictPtrTraits> hyperedge_list,
     const torch::PackedTensorAccessor32<int64_t, 1, torch::RestrictPtrTraits> hyperedge_list_end,
     const torch::PackedTensorAccessor32<float, 1, torch::RestrictPtrTraits> selected_nets,
+    const torch::PackedTensorAccessor32<bool, 1, torch::RestrictPtrTraits> net_mask,
     torch::PackedTensorAccessor32<float, 2, torch::RestrictPtrTraits> net_center_pos,
     int num_nets){
         const int index = blockIdx.x * blockDim.x + threadIdx.x;
         const int i = index >> 1;
-        if (i < num_nets && selected_nets[i]) {
+        if (i < num_nets && selected_nets[i]&&net_mask[i]) {
             const int c = index & 1;  // channel index
             int64_t start_idx = 0;
             if (i != 0) {
@@ -668,10 +669,9 @@ torch::Tensor GPURouter::calcNetCenterPos(torch::Tensor node_pos,
                                     torch::Tensor pin_rel_cpos,
                                     torch::Tensor hyperedge_list,
                                     torch::Tensor hyperedge_list_end,
-                                    torch::Tensor selected_net) {
-    cudaSetDevice(node_pos.get_device());
-
-
+                                    torch::Tensor selected_net,
+                                    torch::Tensor net_mask) {
+    
     const auto num_pins = pin_rel_cpos.size(0);
     const auto num_nets =selected_net.size(0);
 
@@ -690,11 +690,13 @@ torch::Tensor GPURouter::calcNetCenterPos(torch::Tensor node_pos,
     const int threads2 = 128;
     const int blocks2 = (num_nets * 2 + threads2 - 1) / threads2;
     
+    
     calc_net_center_pos<<<blocks2, threads2, 0>>>(
         pin_pos.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
         hyperedge_list.packed_accessor32<int64_t, 1, torch::RestrictPtrTraits>(),
         hyperedge_list_end.packed_accessor32<int64_t, 1, torch::RestrictPtrTraits>(),
         selected_net.packed_accessor32<float, 1, torch::RestrictPtrTraits>(),
+        net_mask.packed_accessor32<bool, 1, torch::RestrictPtrTraits>(),
         net_center_pos.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
         num_nets);
 
@@ -730,12 +732,6 @@ torch::Tensor GPURouter::netToNodeForce(torch::Tensor net_center_grad,
         selected_net.packed_accessor32<float, 1, torch::RestrictPtrTraits>(),
         num_nets);
     
-    // 检查 CUDA 内核调用是否成功
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        std::cerr << "CUDA error after net_center_force_to_pin: " << cudaGetErrorString(err) << std::endl;
-    }
-    
     const int threads2 = 128;
     const int blocks2 = (num_nodes * 2 + threads2 - 1) / threads2;
     
@@ -745,15 +741,6 @@ torch::Tensor GPURouter::netToNodeForce(torch::Tensor net_center_grad,
         node2pin_list.packed_accessor32<int64_t, 1, torch::RestrictPtrTraits>(),
         node2pin_list_end.packed_accessor32<int64_t, 1, torch::RestrictPtrTraits>(),
         num_nodes);
-    
-    // 检查 CUDA 内核调用是否成功
-    err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        std::cerr << "CUDA error after pin_grad_to_node_grad: " << cudaGetErrorString(err) << std::endl;
-    }
-    
-    // 同步 CUDA 设备以确保所有内核执行完毕
-    cudaDeviceSynchronize();
     
     return node_grad;
 }

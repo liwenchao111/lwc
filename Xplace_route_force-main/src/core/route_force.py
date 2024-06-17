@@ -221,7 +221,7 @@ def get_route_force(
     mov_route_grad = torch.zeros_like(mov_node_pos)
     mov_congest_grad = torch.zeros_like(mov_node_pos)
     mov_pseudo_grad = torch.zeros_like(mov_node_pos)
-
+    ps.route_net_force_iter += 1
     # 1) run global routing and compute gradient mat
     grdb, route_input_mat, routeforce, route_gradmat, route_gradmat_upset = None, None, None, None, None
     if ps.recal_conn_route_force:
@@ -285,11 +285,11 @@ def get_route_force(
     else:
         mov_pseudo_grad = None
     
-    
-    mov_congest_grad[:filler_lhs] += net_congestion_force(
-        args, data, mov_node_pos, mov_node_size, expand_ratio,
-        cg_mapAll, route_gradmat, routeforce, 0, filler_lhs, -1.0
-    )
+    if ps.route_net_force_iter>20000000000:
+        mov_congest_grad[:filler_lhs] += net_congestion_force(
+                    args, data, mov_node_pos, mov_node_size, expand_ratio,
+                    cg_mapAll, route_gradmat, routeforce, 0, filler_lhs, -1.0
+            )
     
     
     
@@ -533,13 +533,16 @@ def net_congestion_force(
     unit_len_y /= data.site_width
     selected_nets = (data.net_to_num_pins > 2).float() 
     
+    net_center_pos = torch.zeros((data.net_to_num_pins.shape[0], 2), device=mov_node_pos.device)
+
     net_center_pos = routeforce.calc_net_center_pos(
         mov_node_pos[lhs:rhs],
         data.pin_id2node_id,
         data.pin_rel_cpos,
         data.hyperedge_list,
         data.hyperedge_list_end,
-        selected_nets
+        selected_nets,
+        data.net_mask
     )
     
     net_center_size = torch.ones_like(net_center_pos)
@@ -558,16 +561,16 @@ def net_congestion_force(
         data.num_nets
     )        
     net2node_grad = torch.zeros_like(mov_node_pos[lhs:rhs])
-    #net2node_grad = routeforce.net_to_node_force(
-    #    net_center_grad,
-    #    data.hyperedge_list,
-    #    data.hyperedge_list_end,
-    #    data.node2pin_list,
-    #    data.node2pin_list_end,
-    #    data.pin_id2node_id,
-    #    selected_nets,
-    #    rhs
-    #)
+    net2node_grad = routeforce.net_to_node_force(
+        net_center_grad,
+        data.hyperedge_list,
+        data.hyperedge_list_end,
+        data.node2pin_list,
+        data.node2pin_list_end,
+        data.pin_id2node_id,
+        selected_nets,
+        rhs
+    )
     
     return net2node_grad
 

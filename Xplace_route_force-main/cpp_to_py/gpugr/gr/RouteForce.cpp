@@ -162,8 +162,9 @@ torch::Tensor RouteForce::calcNetCenterPos(torch::Tensor node_pos,
                                            torch::Tensor pin_rel_cpos,
                                            torch::Tensor hyperedge_list,
                                            torch::Tensor hyperedge_list_end,
-                                           torch::Tensor selected_net) {
-    return router.calcNetCenterPos(node_pos, pin_id2node_id, pin_rel_cpos, hyperedge_list, hyperedge_list_end, selected_net);
+                                           torch::Tensor selected_net,
+                                           torch::Tensor net_mask) {
+    return router.calcNetCenterPos(node_pos, pin_id2node_id, pin_rel_cpos, hyperedge_list, hyperedge_list_end, selected_net, net_mask);
 }
 
 torch::Tensor RouteForce::netToNodeForce(torch::Tensor net_center_grad,
