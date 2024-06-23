@@ -44,7 +44,7 @@ def get_option():
     parser.add_argument('--route_freq', type=int, default=10, help='routing freq')
     parser.add_argument('--num_route_iter', type=int, default=3, help='number of routing iters')
     parser.add_argument('--route_weight', type=float, default=0, help='the weight of route')
-    parser.add_argument('--congest_weight', type=float, default=1.5, help='the weight of congested force')
+    parser.add_argument('--congest_weight', type=float, default=3, help='the weight of congested force')
     parser.add_argument('--pseudo_weight', type=float, default=0, help='the weight of pseudo net')
 
     # detailed placement and evaluation

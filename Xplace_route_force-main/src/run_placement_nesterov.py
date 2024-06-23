@@ -70,13 +70,6 @@ def run_placement_main_nesterov(args, logger):
         deterministic=args.deterministic,
     ).to(device)
 
-    # fix_lhs, fix_rhs = data.fixed_index
-    # info = (0, 0, data.design_name + "_fix")
-    # fix_node_pos = data.node_pos[fix_lhs:fix_rhs, ...]
-    # fix_node_size = data.node_size[fix_lhs:fix_rhs, ...]
-    # draw_fig_with_cairo(
-    #     None, None, fix_node_pos, fix_node_size, None, None, data, info, args
-    # )
     evaluator_fn = partial(
         fast_evaluator,
         constraint_fn=trunc_node_pos_fn,
@@ -115,8 +108,8 @@ def run_placement_main_nesterov(args, logger):
     )
     
     def initialize_optimizer(obj_and_grad_fn, mov_node_pos, trunc_node_pos_fn, mov_lhs, mov_rhs, conn_fix_node_pos, 
-                             density_map_layer, mov_node_size, expand_ratio, init_density_map, 
-                             ps, data, args, route_fn):
+                            density_map_layer, mov_node_size, expand_ratio, init_density_map, 
+                            ps, data, args, route_fn):
         optimizer = NesterovOptimizer([mov_node_pos], lr=0)
 
         # initialization
@@ -166,14 +159,7 @@ def run_placement_main_nesterov(args, logger):
                 mov_node_pos.data.copy_(best_sol)
 
         # for route force
-        if ps.use_route_force and terminate_signal:
-            best_res = ps.get_best_solution()
-            ps.reset_best_sol()
-            if best_res[0] is not None:
-                best_sol, hpwl, overflow = best_res
-                mov_node_pos.data.copy_(best_sol)
-                ps.push_wait_router_sol(hpwl, overflow, best_sol)
-                            
+        if ps.use_route_force and terminate_signal:                                    
             if ps.curr_optimizer_cnt < ps.max_route_force_opt:
                 terminate_signal = False  # reset signal
                 ps.curr_optimizer_cnt += 1
@@ -186,7 +172,9 @@ def run_placement_main_nesterov(args, logger):
         if ps.open_route_force_opt and ps.need_to_stop_route_force_opt():
             ps.open_route_force_opt = False
             best_sol_gr = ps.get_best_gr_sol()
-            mov_node_pos.data.copy_(best_sol_gr)
+            if best_sol_gr[0] is not None:
+                ps.the_best_sol = best_sol_gr
+                mov_node_pos.data.copy_(best_sol_gr)
             ps.reset_gr_sol_recorder()
             ps.use_norm_density_weight = True
             optimizer, _ = initialize_optimizer(obj_and_grad_fn, mov_node_pos, trunc_node_pos_fn, mov_lhs, mov_rhs, 
@@ -359,7 +347,7 @@ def run_placement_main_nesterov(args, logger):
                 ps.push_gr_sol(gr_metrics, hpwl, overflow, mov_node_pos)
             ps.reset_wait_router_sol_recorder()
 
-        best_sol_gr = ps.get_best_gr_sol()
+        best_sol_gr = ps.the_best_sol#ps.get_best_gr_sol()
         mov_node_pos[mov_lhs:mov_rhs].data.copy_(best_sol_gr[mov_lhs:mov_rhs])
         ps.reset_gr_sol_recorder()
 

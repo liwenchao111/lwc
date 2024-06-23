@@ -221,7 +221,7 @@ def get_route_force(
     mov_route_grad = torch.zeros_like(mov_node_pos)
     mov_congest_grad = torch.zeros_like(mov_node_pos)
     mov_pseudo_grad = torch.zeros_like(mov_node_pos)
-    ps.route_net_force_iter += 1
+    
     # 1) run global routing and compute gradient mat
     grdb, route_input_mat, routeforce, route_gradmat, route_gradmat_upset = None, None, None, None, None
     if ps.recal_conn_route_force:
@@ -272,9 +272,14 @@ def get_route_force(
             args, data, mov_node_pos, mov_node_size, expand_ratio,
             cg_mapAll, route_gradmat, routeforce, filler_lhs, filler_rhs, 1.0
         )    
-    
+    ps.route_net_force_iter += 1
+    if ps.route_net_force_iter<30:
+        mov_congest_grad[:filler_lhs] += net_congestion_force(
+                    args, data, mov_node_pos, mov_node_size, expand_ratio,
+                    cg_mapAll, route_gradmat, routeforce, 0, filler_lhs, -1.0
+            )        
+
     ps.mov_node_to_num_pseudo_pins = torch.zeros_like(mov_node_pos)
-    
     if num_fillers > 0:
         # 2.3) compute pseudo net force, a force to push fillers to congested area
         num_fillers_selected = int(num_fillers * 0.05)
@@ -284,14 +289,6 @@ def get_route_force(
         ps.mov_node_to_num_pseudo_pins[filler_lhs:filler_lhs + num_fillers_selected] += 1
     else:
         mov_pseudo_grad = None
-    
-    if ps.route_net_force_iter>20000000000:
-        mov_congest_grad[:filler_lhs] += net_congestion_force(
-                    args, data, mov_node_pos, mov_node_size, expand_ratio,
-                    cg_mapAll, route_gradmat, routeforce, 0, filler_lhs, -1.0
-            )
-    
-    
     
     '''''
     cg_map_medium = torch.zeros(64,64,dtype=torch.float32)
@@ -531,7 +528,7 @@ def net_congestion_force(
     unit_len_x, unit_len_y = routeforce.gcell_steps()
     unit_len_x /= data.site_width
     unit_len_y /= data.site_width
-    selected_nets = (data.net_to_num_pins > 2).float() 
+    selected_nets = (data.net_to_num_pins < 5).float() 
     
     net_center_pos = torch.zeros((data.net_to_num_pins.shape[0], 2), device=mov_node_pos.device)
 
@@ -544,9 +541,11 @@ def net_congestion_force(
         selected_nets,
         data.net_mask
     )
-    
-    net_center_size = torch.ones_like(net_center_pos)
-    net_expend_ratio = torch.ones_like(selected_nets) 
+    net_to_num_pins_expanded = data.net_to_num_pins.unsqueeze(1).expand(-1, 2)
+    net_center_size = torch.ones_like(net_center_pos) * net_to_num_pins_expanded
+    net_center_size = torch.clamp(net_center_size, max=5)
+    max_num_pin =torch.clamp(data.net_to_num_pins, max=5)
+    net_expend_ratio = torch.ones_like(selected_nets)/max_num_pin 
     net_center_grad = routeforce.filler_route_grad(
         net_center_pos,
         net_center_size,

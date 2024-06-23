@@ -150,6 +150,7 @@ class ParamScheduler:
         self.mov_congest_force_ratio = 0.0
         self.mov_pseudo_force_ratio = 0.0
         self.all_route_force_ratio = 0.0
+        self.the_best_sol = None
         self.cg_map_iter = self.iter 
         self.enable_route = args.use_route_force or args.use_cell_inflate
         self.use_cell_inflate = args.use_cell_inflate
@@ -174,7 +175,7 @@ class ParamScheduler:
         self.curr_optimizer_cnt = 0
         self.prev_optimizer_cnt = 0
         self.max_route_opt = 5
-        self.max_route_force_opt = 20
+        self.max_route_force_opt = 15
         self.route_net_force_iter = 0
         self.wait_router_sol_recorder =[]
         self.gr_sol_recorder = []
@@ -631,12 +632,12 @@ class ParamScheduler:
         if self.start_route_iter is not None and self.iter - self.start_route_iter > self.num_route_iter:
             self.__logger__.info("End route optimization : iteration limit")
             return True
-        elif self.check_routability_opt_plateau(window=5, threshold=0.01):
-            self.__logger__.info("End route optimization : routability plateau")
-            return True
-        elif self.check_routability_opt_divergence(window=3, threshold=0.005):
-            self.__logger__.info("End route optimization : routability divergence")
-            return True
+        #elif self.check_routability_opt_plateau(window=5, threshold=0.01):
+        #    self.__logger__.info("End route optimization : routability plateau")
+        #    return True
+        #elif self.check_routability_opt_divergence(window=3, threshold=0.005):
+        #    self.__logger__.info("End route optimization : routability divergence")
+        #    return True
         return False
     
     def check_routability_opt_plateau(self, window=3, threshold=0.01):
