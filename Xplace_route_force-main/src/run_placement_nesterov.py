@@ -147,7 +147,12 @@ def run_placement_main_nesterov(args, logger):
         ps.step(hpwl, overflow, mov_node_pos, data)
         if ps.need_to_early_stop():
             terminate_signal = True
-
+        
+        if data.fixed_node_area_ratio < 0.05 and data.num_fillers < 10 :
+            ps.use_cell_inflate_only = True
+            ps.use_route_force = False
+    
+            
         # for only cell inflation
         if ps.use_cell_inflate_only and terminate_signal and ps.curr_optimizer_cnt < ps.max_route_opt:
             terminate_signal = False  # reset signal
@@ -168,7 +173,7 @@ def run_placement_main_nesterov(args, logger):
                 ps.open_route_force_opt, ps.rerun_route, ps.recal_conn_route_force = True, True, True
                 logger.info("iter: %d |Open route force optimization..." % iteration)
             
-        # rerun route 
+        # rerun route    
         if ps.open_route_force_opt and ps.need_to_stop_route_force_opt():
             ps.open_route_force_opt = False
             best_sol_gr = ps.get_best_gr_sol()
@@ -346,10 +351,12 @@ def run_placement_main_nesterov(args, logger):
                 )
                 ps.push_gr_sol(gr_metrics, hpwl, overflow, mov_node_pos)
             ps.reset_wait_router_sol_recorder()
-
+    
         best_sol_gr = ps.the_best_sol#ps.get_best_gr_sol()
+        if ps.use_cell_inflate_only:
+            best_sol_gr = ps.get_best_gr_sol()
         mov_node_pos[mov_lhs:mov_rhs].data.copy_(best_sol_gr[mov_lhs:mov_rhs])
-        ps.reset_gr_sol_recorder()
+        
 
     node_pos = mov_node_pos[mov_lhs:mov_rhs]
     node_pos = torch.cat([node_pos, data.node_pos[mov_rhs:]], dim=0)

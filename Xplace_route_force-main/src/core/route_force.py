@@ -230,7 +230,7 @@ def get_route_force(
             args, logger, data, rawdb, gpdb, ps, mov_node_pos, 
             constraint_fn=constraint_fn, skip_m1_route=skip_m1_route, run_fft=True, rerun_route=ps.rerun_route
         )
-        grdb, routeforce, cg_mapAll, route_input_mat, cg_mapHV, map_raw, map_2d, route_gradmat, route_gradmat_upset, gr_metrics = output
+        grdb, routeforce, cg_mapAll, route_input_mat, cg_mapHV, map_raw, map_2d, route_gradmat, gr_metrics = output
         dmd_map, wire_dmd_map, via_dmd_map, cap_map = map_raw
         dmd_map2d, wire_dmd_map2d, via_dmd_map2d, cap_map2d = map_2d
         
@@ -267,11 +267,20 @@ def get_route_force(
         args, data, mov_node_pos, mov_node_size, expand_ratio,
         cg_mapAll, route_gradmat, routeforce, 0, filler_lhs, -1.0
     )
+    
     if num_fillers > 1:
-        mov_congest_grad[filler_lhs:filler_rhs] += cell_congestion_force(
+        if data.fixed_node_area_ratio > 0.1:
+            factor = 1.0
+        else:
+            if data.fixed_node_area_ratio == 0:
+                raise ValueError("fixed_node_area_ratio cannot be zero")
+            factor = 1.0 / data.fixed_node_area_ratio
+    
+        mov_congest_grad[filler_lhs:filler_rhs] += factor * cell_congestion_force(
             args, data, mov_node_pos, mov_node_size, expand_ratio,
             cg_mapAll, route_gradmat, routeforce, filler_lhs, filler_rhs, 1.0
-        )    
+        )
+  
     ps.route_net_force_iter += 1
     if ps.route_net_force_iter<30:
         mov_congest_grad[:filler_lhs] += net_congestion_force(
@@ -481,7 +490,7 @@ def run_gr_and_fft(args, logger, data, rawdb, gpdb, ps, mov_node_pos=None, grdb=
     if report_gr_metrics_only:
         return gr_metrics
 
-    return grdb, routeforce, cg_mapAll, route_input_mat, cg_mapHV, map_raw, map_2d, route_gradmat, route_gradmat_upset, gr_metrics
+    return grdb, routeforce, cg_mapAll, route_input_mat, cg_mapHV, map_raw, map_2d, route_gradmat, gr_metrics
 
 
 def conn_route_force(
@@ -571,7 +580,7 @@ def net_congestion_force(
         rhs
     )
     
-    return net2node_grad
+    return (1-data.fixed_node_area_ratio) *net2node_grad
 
 def cell_congestion_force(
     args, data, mov_node_pos, mov_node_size, expand_ratio, cg_mapAll, route_gradmat, routeforce, lhs, rhs, grad_weight=1.0
@@ -611,8 +620,8 @@ def cell_congestion_force(
     )
     
     filler_route_grad =torch.where(filler_route_grad.abs() > 1e-3, filler_route_grad, torch.tensor(0.0, dtype=torch.float).to(filler_route_grad.device))
-    
-    return filler_route_grad
+
+    return data.fixed_node_area_ratio*filler_route_grad
     
 def filler_pseudo_wire_force(data, ps, mov_node_pos, mov_node_size, routeforce, cg_mapAll, lhs, rhs):
     blurrer = torchvision.transforms.GaussianBlur(kernel_size=7, sigma=2)
@@ -906,7 +915,7 @@ def route_inflation(
         constraint_fn=constraint_fn, skip_m1_route=skip_m1_route, rerun_route=rerun_route,
         run_fft=ps.open_route_force_opt, **kwargs
     )
-    grdb, routeforce, cg_mapAll, _, cg_mapHV, _, _, route_gradmat,_, gr_metrics = output
+    grdb, routeforce, cg_mapAll, _, cg_mapHV, _, _, route_gradmat, gr_metrics = output
     numOvflNets, gr_wirelength, gr_numVias, gr_numShorts, rc_hor_mean, rc_ver_mean = gr_metrics
     min_cg_map_inflation = torch.tensor(0.0, dtype=torch.float).to(cg_mapAll.device)
     cg_map_inflation = torch.where(cg_mapAll > 1, cg_mapAll - 1, min_cg_map_inflation)
